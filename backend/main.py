@@ -28,16 +28,20 @@ app = FastAPI(
     version="2.1.0"
 )
 
-# Global CORS Configuration
-origins = [
+# Global CORS Configuration with Vercel Wildcard Regex & Localhost
+configured_origins = [
     settings.FRONTEND_URL,
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
 ]
+# Remove duplicates and empty strings
+origins = list({o for o in configured_origins if o})
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Automatically permit all Vercel preview & production deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
