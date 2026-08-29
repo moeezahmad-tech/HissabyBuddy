@@ -197,7 +197,7 @@ export const InteractiveFeatureTabs: React.FC = () => {
             Explore the 7 Features Interactively
           </h2>
           <p className="mt-3 text-slate-600 text-sm sm:text-base">
-            See how Hisaaby Buddy simplifies your personal finances, spending, and budgets.
+            See how Hissaby Buddy simplifies your personal finances, spending, and budgets.
           </p>
         </div>
 
@@ -315,7 +315,7 @@ export const InteractiveFeatureTabs: React.FC = () => {
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Pinecone Index:</span>
-                      <span className="font-semibold text-[#5391FE]">hisaaby-financial-rag</span>
+                      <span className="font-semibold text-[#5391FE]">hissaby-financial-rag</span>
                     </div>
                   </div>
                 </div>
@@ -351,7 +351,7 @@ export const InteractiveFeatureTabs: React.FC = () => {
                       <Bot className="w-5 h-5 text-[#5391FE]" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-[#012456]">Hisaaby Smart Copilot</h4>
+                      <h4 className="text-xs font-bold text-[#012456]">Hissaby Smart Copilot</h4>
                       <p className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         24/7 Financial Guidance Ready
@@ -661,7 +661,7 @@ export const InteractiveFeatureTabs: React.FC = () => {
                   <h4 className="text-sm font-bold text-[#012456]">Primary Accent</h4>
                   <p className="text-xs text-slate-500 font-mono">#5391FE</p>
                   <p className="text-xs text-slate-600">
-                    Inspired by the light blue Hisaaby Buddy smiling logo accent for interactive elements.
+                    Inspired by the light blue Hissaby Buddy smiling logo accent for interactive elements.
                   </p>
                 </div>
 
@@ -711,7 +711,7 @@ export const InteractiveFeatureTabs: React.FC = () => {
                       <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center overflow-hidden">
                         <img src="/logo.png" alt="HB" className="w-6 h-6 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                       </div>
-                      <span className="text-xs font-black text-[#012456]">Hisaaby <span className="text-[#5391FE]">Buddy</span></span>
+                      <span className="text-xs font-black text-[#012456]">Hissaby <span className="text-[#5391FE]">Buddy</span></span>
                     </div>
 
                     <div className="space-y-1">

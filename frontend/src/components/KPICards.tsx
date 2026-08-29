@@ -25,7 +25,7 @@ export const KPICards: React.FC = () => {
 
   const [metrics, setMetrics] = useState<MetricsData>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_metrics');
+      const cached = localStorage.getItem('hissaby_cached_metrics');
       if (cached) return JSON.parse(cached);
     } catch {}
     return {
@@ -73,7 +73,7 @@ export const KPICards: React.FC = () => {
             currency: data.currency,
             currencySymbol: data.currencySymbol
           };
-          localStorage.setItem('hisaaby_cached_metrics', JSON.stringify(metricsPayload));
+          localStorage.setItem('hissaby_cached_metrics', JSON.stringify(metricsPayload));
           setMetrics(metricsPayload);
         } else if (!res.ok && !isCancelled) {
           setHasError(true);

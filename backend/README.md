@@ -1,13 +1,13 @@
-# Hisaaby Buddy - Backend API
+# Hissaby Buddy - Backend API
 
 > **FastAPI Backend for Groq AI Inference, Pinecone RAG & Firebase Auth**  
-> High-performance Python backend powering Hisaaby Buddy financial intelligence.
+> High-performance Python backend powering Hissaby Buddy financial intelligence.
 
 ---
 
 ## Overview
 
-The Hisaaby Buddy backend provides:
+The Hissaby Buddy backend provides:
 - **Groq Cloud LPU Inference:** Instant responses powered by LLaMA-3 models for conversational budget forecasting and expenditure optimization.
 - **Pinecone Vector Database:** High-dimensional vector storage (384-dimensional embeddings) for RAG over PDF bank statements and financial reports.
 - **Firebase Admin SDK & JWT Auth:** Identity verification and per-user data tenancy enforcement using Google service account credentials.
@@ -46,7 +46,7 @@ GROQ_API_KEY=your_groq_api_key_here
 
 # Pinecone Serverless Vector Index
 PINECONE_API_KEY=your_pinecone_api_key_here
-PINECONE_INDEX_NAME=hisaaby-financial-rag
+PINECONE_INDEX_NAME=hissaby-financial-rag
 
 # Firebase Admin SDK Credentials
 FIREBASE_CREDENTIALS_PATH=../finsight-ai-e692d-firebase-adminsdk-fbsvc-0c9b244ae3.json

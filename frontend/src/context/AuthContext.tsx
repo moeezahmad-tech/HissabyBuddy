@@ -36,7 +36,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const STORAGE_KEY = 'hisaaby_auth_user';
+const STORAGE_KEY = 'hissaby_auth_user';
 
 function formatFirebaseError(err: any): string {
   const code = err?.code || '';

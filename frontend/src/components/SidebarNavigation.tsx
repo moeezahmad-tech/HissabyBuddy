@@ -41,7 +41,7 @@ export const SidebarNavigation: React.FC<SidebarProps> = ({
           <div className="w-11 h-11 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center p-1 overflow-hidden group hover:border-[#5391FE] transition-colors shrink-0">
             <img 
               src="/logo.png" 
-              alt="Hisaaby Buddy Logo" 
+              alt="Hissaby Buddy Logo" 
               className="w-full h-full object-contain group-hover:scale-105 transition-transform"
               onError={(e) => {
                 const target = e.currentTarget;
@@ -54,7 +54,7 @@ export const SidebarNavigation: React.FC<SidebarProps> = ({
           </div>
           <div>
             <h1 className="text-base font-black text-[#012456] tracking-tight flex items-center gap-1">
-              Hisaaby <span className="text-[#5391FE]">Buddy</span>
+              Hissaby <span className="text-[#5391FE]">Buddy</span>
             </h1>
             <p className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
               Financial AI Copilot

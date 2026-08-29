@@ -4,9 +4,9 @@ from typing import List, Dict, Any, Optional
 from groq import Groq
 from core.config import settings
 
-logger = logging.getLogger("hisaaby.groq")
+logger = logging.getLogger("hissaby.groq")
 
-FINANCIAL_SYSTEM_PROMPT = """You are Hisaaby Buddy, an expert AI Financial Copilot and financial document analyst.
+FINANCIAL_SYSTEM_PROMPT = """You are Hissaby Buddy, an expert AI Financial Copilot and financial document analyst.
 
 STRICT GROUNDING & SCOPE RULES:
 1. You are EXCLUSIVELY permitted to assist with personal finances, budgeting, spending habits, accounting, bank statements, invoices, receipts, and uploaded financial records.
@@ -51,7 +51,7 @@ class GroqService:
 
         # Friendly financial greetings
         if clean_lower in ["hi", "hello", "hey", "good morning", "good evening", "greetings"]:
-            return "Hello! I am your Hisaaby Buddy Financial Copilot. How can I assist you with your budget, bank statements, or spending today?"
+            return "Hello! I am your Hissaby Buddy Financial Copilot. How can I assist you with your budget, bank statements, or spending today?"
 
         # Non-financial fast rule check (exclude conversational follow-ups like 'why')
         non_financial_triggers = [

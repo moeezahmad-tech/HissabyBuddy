@@ -20,11 +20,11 @@ from routers.dashboard import register_document_financials
 
 # Configure logger
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("hisaaby.api")
+logger = logging.getLogger("hissaby.api")
 
 app = FastAPI(
-    title="Hisaaby Buddy API",
-    description="Backend API for Hisaaby Buddy - Groq Vision, Pinecone RAG & Firebase Auth",
+    title="Hissaby Buddy API",
+    description="Backend API for Hissaby Buddy - Groq Vision, Pinecone RAG & Firebase Auth",
     version="2.1.0"
 )
 
@@ -98,7 +98,7 @@ app.include_router(documents.router)
 @app.get("/")
 async def root():
     return {
-        "app": "Hisaaby Buddy API",
+        "app": "Hissaby Buddy API",
         "status": "operational",
         "version": "2.1.0",
         "features": [

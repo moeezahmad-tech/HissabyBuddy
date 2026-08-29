@@ -11,14 +11,14 @@ export const Footer: React.FC = () => {
             <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shadow-xs">
               <img
                 src="/logo.png"
-                alt="Hisaaby Buddy Logo"
+                alt="Hissaby Buddy Logo"
                 className="w-full h-full object-contain"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             </div>
             <div>
               <p className="text-base font-black text-[#012456] tracking-tight">
-                Hisaaby <span className="text-[#5391FE]">Buddy</span>
+                Hissaby <span className="text-[#5391FE]">Buddy</span>
               </p>
               <p className="text-[11px] text-slate-500 font-medium">
                 AI Financial Copilot • Next-Gen Wealth Intelligence
@@ -44,7 +44,7 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>&copy; 2026 Hisaaby Buddy. All financial records secured with multi-tenant data isolation.</p>
+          <p>&copy; 2026 Hissaby Buddy. All financial records secured with multi-tenant data isolation.</p>
           <div className="flex items-center gap-6">
             <a href="#features" className="hover:text-[#5391FE] transition-colors font-medium">7 Core Features</a>
             <a href="#interactive-demo" className="hover:text-[#5391FE] transition-colors font-medium">Interactive Demo</a>

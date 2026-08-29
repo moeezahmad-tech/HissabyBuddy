@@ -22,7 +22,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onOpenApp }) => {
           {/* Top Pill */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-800 mb-8 hover:bg-slate-200/80 transition-colors">
             <span className="w-2 h-2 rounded-full bg-[#5391FE] animate-ping" />
-            <span>Introducing Hisaaby Buddy AI Financial Copilot</span>
+            <span>Introducing Hissaby Buddy AI Financial Copilot</span>
             <span className="text-[#5391FE] font-bold">Simple &amp; Fast &rarr;</span>
           </div>
 

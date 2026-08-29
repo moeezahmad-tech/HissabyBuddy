@@ -3,10 +3,10 @@ import os
 import logging
 from typing import Dict, Any, List, Optional
 
-logger = logging.getLogger("hisaaby.storage")
+logger = logging.getLogger("hissaby.storage")
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-STORE_FILE = os.path.join(DATA_DIR, "hisaaby_store.json")
+STORE_FILE = os.path.join(DATA_DIR, "hissaby_store.json")
 
 class StorageService:
     def __init__(self):

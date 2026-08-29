@@ -7,7 +7,7 @@ from services.groq_service import groq_service
 from services.pinecone_service import pinecone_service
 from services.storage_service import storage_service
 
-logger = logging.getLogger("hisaaby.chat")
+logger = logging.getLogger("hissaby.chat")
 router = APIRouter(prefix="/api/chat", tags=["Groq AI Copilot"])
 
 class ChatRequest(BaseModel):
@@ -28,7 +28,7 @@ async def ask_financial_copilot(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Query the Hisaaby Buddy financial copilot powered by Groq AI.
+    Query the Hissaby Buddy financial copilot powered by Groq AI.
     Grounds answers in real Pinecone vector chunks, uploaded statement metadata, and live ledger data.
     """
     clean_prompt = request.prompt.strip()

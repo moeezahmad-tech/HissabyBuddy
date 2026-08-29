@@ -10,7 +10,7 @@ import cv2
 from groq import Groq
 from core.config import settings
 
-logger = logging.getLogger("hisaaby.ocr")
+logger = logging.getLogger("hissaby.ocr")
 
 _groq_client = None
 

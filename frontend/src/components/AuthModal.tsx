@@ -52,7 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <img src="/logo.png" alt="HB" className="w-8 h-8 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           </div>
           <h3 className="text-2xl font-black text-[#012456] tracking-tight">
-            {mode === 'signin' ? 'Sign in to Hisaaby Buddy' : 'Create your account'}
+            {mode === 'signin' ? 'Sign in to Hissaby Buddy' : 'Create your account'}
           </h3>
           <p className="text-xs text-slate-500 mt-1">
             Access your secure personal finances and AI assistant

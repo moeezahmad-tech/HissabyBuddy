@@ -1,7 +1,7 @@
-# Hisaaby Buddy — Smart AI Financial Copilot & Budget Manager
+# Hissaby Buddy — Smart AI Financial Copilot & Budget Manager
 
 <p align="center">
-  <img src="frontend/public/logo.png" alt="Hisaaby Buddy Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(83, 145, 254, 0.2);" />
+  <img src="frontend/public/logo.png" alt="Hissaby Buddy Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(83, 145, 254, 0.2);" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 ## 🌟 Executive Summary
 
-**Hisaaby Buddy** is an intelligent personal and business financial copilot designed to automate money management. It combines computer vision OCR for bank statements, vector semantic retrieval (Pinecone RAG), instant natural-language transaction logging, fixed recurring obligation tracking (Rent, Salary, Pocket Money), and high-velocity financial analytics into a clean white aesthetic.
+**Hissaby Buddy** is an intelligent personal and business financial copilot designed to automate money management. It combines computer vision OCR for bank statements, vector semantic retrieval (Pinecone RAG), instant natural-language transaction logging, fixed recurring obligation tracking (Rent, Salary, Pocket Money), and high-velocity financial analytics into a clean white aesthetic.
 
 ---
 
@@ -124,7 +124,7 @@ HissabyBuddy/
 │   │   ├── firebase.py            # Firebase Admin SDK & token validation
 │   │   └── security.py            # JWT Auth & guest user resolution
 │   ├── data/
-│   │   └── hisaaby_store.json     # Persistent disk storage (Ledgers, Recurring, Docs)
+│   │   └── hissaby_store.json     # Persistent disk storage (Ledgers, Recurring, Docs)
 │   ├── routers/
 │   │   ├── auth.py                # Authentication endpoints
 │   │   ├── chat.py                # Groq AI copilot RAG endpoint
@@ -139,7 +139,7 @@ HissabyBuddy/
 │   └── requirements.txt           # Python dependencies
 ├── frontend/
 │   ├── public/
-│   │   └── logo.png               # Official Hisaaby Buddy logo asset
+│   │   └── logo.png               # Official Hissaby Buddy logo asset
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── AIFinancialAssistantView.tsx  # Groq AI chat view
@@ -258,7 +258,7 @@ npm run dev
 - **Authentication:** Firebase ID token verification with strict bearer authentication.
 - **Guest / Dev Mode Isolation:** Requests without tokens default to isolated `guest_user` storage.
 - **Zero Raw PII Storage:** Sensitive bank account credentials are never stored. Only sanitized financial metrics and semantic text chunks are indexed.
-- **Disk Synchronization:** All transaction modifications are written safely via atomic temporary file replacement (`hisaaby_store.json.tmp` &rarr; `hisaaby_store.json`).
+- **Disk Synchronization:** All transaction modifications are written safely via atomic temporary file replacement (`hissaby_store.json.tmp` &rarr; `hissaby_store.json`).
 
 ---
 

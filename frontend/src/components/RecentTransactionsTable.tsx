@@ -24,7 +24,7 @@ export const RecentTransactionsTable: React.FC = () => {
   const { formatAmount } = useCurrency();
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_transactions');
+      const cached = localStorage.getItem('hissaby_cached_transactions');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -46,7 +46,7 @@ export const RecentTransactionsTable: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         const txList = data.transactions || [];
-        localStorage.setItem('hisaaby_cached_transactions', JSON.stringify(txList));
+        localStorage.setItem('hissaby_cached_transactions', JSON.stringify(txList));
         setTransactions(txList);
       } else {
         const errJson = await res.json().catch(() => ({ error: 'Failed to fetch transactions' }));

@@ -10,7 +10,7 @@ from services.storage_service import storage_service
 from core.config import settings
 from groq import Groq
 
-logger = logging.getLogger("hisaaby.dashboard")
+logger = logging.getLogger("hissaby.dashboard")
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard & Firestore Analytics"])
 
 # Persistent per-user transaction & balance registry backed by storage_service

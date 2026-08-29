@@ -1,5 +1,5 @@
 # ==============================================================================
-# Hisaaby Buddy - Backend Python Dependencies
+# Hissaby Buddy - Backend Python Dependencies
 # ==============================================================================
 
 # Core Web Framework & Server

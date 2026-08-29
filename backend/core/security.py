@@ -18,7 +18,7 @@ async def get_current_user(
         if settings.ENVIRONMENT == "development":
             return {
                 "uid": "guest_user",
-                "email": "guest@hisaaby.local",
+                "email": "guest@hissaby.local",
                 "name": "Guest User",
                 "tier": "Standard",
                 "is_guest": True
@@ -55,7 +55,7 @@ async def get_current_user(
     if settings.ENVIRONMENT == "development" and token in ["google-auth-test", "dev-test"]:
         return {
             "uid": "usr_dev_test",
-            "email": "developer@hisaaby.local",
+            "email": "developer@hissaby.local",
             "name": "Developer",
             "tier": "Development",
             "is_dev": True
@@ -65,7 +65,7 @@ async def get_current_user(
     if settings.ENVIRONMENT == "development":
         return {
             "uid": "usr_active_session",
-            "email": "user@hisaaby.local",
+            "email": "user@hissaby.local",
             "name": "Authenticated User",
             "tier": "Active",
             "is_dev_fallback": True

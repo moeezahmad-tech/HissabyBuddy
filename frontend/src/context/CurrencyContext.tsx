@@ -29,7 +29,7 @@ interface CurrencyContextType {
 }
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
-const CURRENCY_STORAGE_KEY = 'hisaaby_currency_code';
+const CURRENCY_STORAGE_KEY = 'hissaby_currency_code';
 
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>(() => {

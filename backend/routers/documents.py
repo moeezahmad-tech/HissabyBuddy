@@ -8,7 +8,7 @@ from services.pinecone_service import pinecone_service
 from services.storage_service import storage_service
 from routers.dashboard import register_document_financials, user_transaction_store, user_account_balances
 
-logger = logging.getLogger("hisaaby.documents")
+logger = logging.getLogger("hissaby.documents")
 router = APIRouter(prefix="/api/documents", tags=["Document Upload & RAG"])
 
 # Persistent document registry backed by storage_service

@@ -59,7 +59,7 @@ export const RecurringMoneyView: React.FC = () => {
 
   const [items, setItems] = useState<RecurringItem[]>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_recurring');
+      const cached = localStorage.getItem('hissaby_cached_recurring');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -92,7 +92,7 @@ export const RecurringMoneyView: React.FC = () => {
         const data = await res.json();
         const recList = data.items || [];
         setItems(recList);
-        localStorage.setItem('hisaaby_cached_recurring', JSON.stringify(recList));
+        localStorage.setItem('hissaby_cached_recurring', JSON.stringify(recList));
       }
     } catch {
       // offline fallback
@@ -150,7 +150,7 @@ export const RecurringMoneyView: React.FC = () => {
         const data = await res.json();
         const updated = [data.item, ...items];
         setItems(updated);
-        localStorage.setItem('hisaaby_cached_recurring', JSON.stringify(updated));
+        localStorage.setItem('hissaby_cached_recurring', JSON.stringify(updated));
         setIsModalOpen(false);
         setSuccessToast(`Added recurring ${formName} successfully!`);
         setTimeout(() => setSuccessToast(null), 3500);
@@ -165,7 +165,7 @@ export const RecurringMoneyView: React.FC = () => {
       };
       const updated = [localItem, ...items];
       setItems(updated);
-      localStorage.setItem('hisaaby_cached_recurring', JSON.stringify(updated));
+      localStorage.setItem('hissaby_cached_recurring', JSON.stringify(updated));
       setIsModalOpen(false);
       setSuccessToast(`Added recurring ${formName} (saved locally)!`);
       setTimeout(() => setSuccessToast(null), 3500);
@@ -189,7 +189,7 @@ export const RecurringMoneyView: React.FC = () => {
 
     const updated = items.filter(i => i.id !== id);
     setItems(updated);
-    localStorage.setItem('hisaaby_cached_recurring', JSON.stringify(updated));
+    localStorage.setItem('hissaby_cached_recurring', JSON.stringify(updated));
     setSuccessToast(`Deleted ${name}.`);
     setTimeout(() => setSuccessToast(null), 3000);
   };

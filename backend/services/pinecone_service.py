@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 from core.config import settings
 
-logger = logging.getLogger("hisaaby.pinecone")
+logger = logging.getLogger("hissaby.pinecone")
 
 class PineconeService:
     def __init__(self):

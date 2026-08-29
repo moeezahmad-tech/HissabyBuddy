@@ -7,7 +7,7 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore
 from .config import settings
 
-logger = logging.getLogger("hisaaby.firebase")
+logger = logging.getLogger("hissaby.firebase")
 
 _firebase_initialized = False
 _db = None

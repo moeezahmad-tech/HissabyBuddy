@@ -1,4 +1,4 @@
-# Hisaaby Buddy - Frontend Application
+# Hissaby Buddy - Frontend Application
 
 > **Next-Gen AI Financial Copilot & RAG Analytics Interface**  
 > Built with React 19, TypeScript, Vite, and Tailwind CSS v4.
@@ -7,7 +7,7 @@
 
 ## Overview
 
-**Hisaaby Buddy** is a modern, white-themed financial AI web application designed for high-precision wealth intelligence, Pinecone RAG document searching, and automated Firestore transaction ledgering.
+**Hissaby Buddy** is a modern, white-themed financial AI web application designed for high-precision wealth intelligence, Pinecone RAG document searching, and automated Firestore transaction ledgering.
 
 ### Color Palette & Design System
 - **Primary Blue:** `#5391FE` (Interactive buttons, focus states, active pills)
@@ -42,7 +42,7 @@
 ```
 frontend/
 ├── public/
-│   └── logo.png              # Hisaaby Buddy logo asset
+│   └── logo.png              # Hissaby Buddy logo asset
 ├── src/
 │   ├── components/
 │   │   ├── HeaderNav.tsx              # Sticky top header for landing view
@@ -82,7 +82,7 @@ VITE_API_URL=http://localhost:8000
 VITE_FIREBASE_PROJECT_ID=finsight-ai-e692d
 
 # Application Metadata
-VITE_APP_TITLE=Hisaaby Buddy | AI Financial Copilot
+VITE_APP_TITLE=Hissaby Buddy | AI Financial Copilot
 ```
 
 ---

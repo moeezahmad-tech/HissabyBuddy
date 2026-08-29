@@ -146,7 +146,7 @@ export const NotificationPopover: React.FC = () => {
           </div>
 
           <div className="pt-2 border-t border-slate-100 text-center">
-            <span className="text-[10px] text-slate-400">Hisaaby Financial Vector Engine • Real-Time</span>
+            <span className="text-[10px] text-slate-400">Hissaby Financial Vector Engine • Real-Time</span>
           </div>
         </div>
       )}

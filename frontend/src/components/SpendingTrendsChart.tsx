@@ -20,14 +20,14 @@ export const SpendingTrendsChart: React.FC = () => {
   const { formatAmount } = useCurrency();
   const [categories, setCategories] = useState<CategoryTrend[]>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_categories');
+      const cached = localStorage.getItem('hissaby_cached_categories');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
   });
   const [monthlyVelocity, setMonthlyVelocity] = useState<MonthVelocity[]>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_velocity');
+      const cached = localStorage.getItem('hissaby_cached_velocity');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -47,8 +47,8 @@ export const SpendingTrendsChart: React.FC = () => {
           const data = await res.json();
           const cats = data.categories || [];
           const vel = data.monthlyVelocity || [];
-          localStorage.setItem('hisaaby_cached_categories', JSON.stringify(cats));
-          localStorage.setItem('hisaaby_cached_velocity', JSON.stringify(vel));
+          localStorage.setItem('hissaby_cached_categories', JSON.stringify(cats));
+          localStorage.setItem('hissaby_cached_velocity', JSON.stringify(vel));
           setCategories(cats);
           setMonthlyVelocity(vel);
         }

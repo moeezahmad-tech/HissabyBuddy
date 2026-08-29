@@ -46,7 +46,7 @@ export const DocumentUploadView: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [documents, setDocuments] = useState<IndexedDoc[]>(() => {
     try {
-      const cached = localStorage.getItem('hisaaby_cached_documents');
+      const cached = localStorage.getItem('hissaby_cached_documents');
       if (cached) return JSON.parse(cached);
     } catch {}
     return [];
@@ -69,7 +69,7 @@ export const DocumentUploadView: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           const docList = data.documents || [];
-          localStorage.setItem('hisaaby_cached_documents', JSON.stringify(docList));
+          localStorage.setItem('hissaby_cached_documents', JSON.stringify(docList));
           setDocuments(docList);
         }
       } catch {
@@ -123,7 +123,7 @@ export const DocumentUploadView: React.FC = () => {
         const data = await res.json();
         setDocuments(prev => {
           const updated = [data.document, ...prev];
-          localStorage.setItem('hisaaby_cached_documents', JSON.stringify(updated));
+          localStorage.setItem('hissaby_cached_documents', JSON.stringify(updated));
           return updated;
         });
         setSuccessMsg(data.message || 'Document successfully scanned with OCR, ledger updated, and indexed into Pinecone!');

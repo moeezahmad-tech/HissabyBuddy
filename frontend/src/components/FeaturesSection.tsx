@@ -107,7 +107,7 @@ export const featuresData: FeatureItem[] = [
     techHighlight: 'Bespoke design system with #5391FE primary blue & #012456 deep navy accents',
     benefits: [
       'Crisp, distraction-free pure white UI (#FFFFFF)',
-      'Official Hisaaby Buddy smiling logo branding',
+      'Official Hissaby Buddy smiling logo branding',
       'Fluid transitions and responsive layout across mobile and desktop'
     ]
   },
@@ -160,7 +160,7 @@ export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ onSelectFeatur
             Comprehensive Financial Intelligence Built for Precision
           </h2>
           <p className="mt-4 text-base sm:text-lg text-slate-600 text-pretty leading-relaxed">
-            Hisaaby Buddy unites advanced RAG vector search, instant Groq inference, and robust Firebase isolation within an elegant, white-themed responsive experience.
+            Hissaby Buddy unites advanced RAG vector search, instant Groq inference, and robust Firebase isolation within an elegant, white-themed responsive experience.
           </p>
 
           {/* Filter Pills */}

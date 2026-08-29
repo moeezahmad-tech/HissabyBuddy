@@ -21,7 +21,7 @@ export const AIFinancialAssistantView: React.FC = () => {
   const { user } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const CHAT_STORAGE_KEY = 'hisaaby_chat_history';
+  const CHAT_STORAGE_KEY = 'hissaby_chat_history';
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -34,7 +34,7 @@ export const AIFinancialAssistantView: React.FC = () => {
     return [
       {
         sender: 'assistant',
-        text: 'Hello! I am your **Hisaaby Buddy Financial Copilot**. I have access to your live financial statements, verified OCR records, and budget metrics. Ask me anything about your balance, expenses, vendors, or salary!',
+        text: 'Hello! I am your **Hissaby Buddy Financial Copilot**. I have access to your live financial statements, verified OCR records, and budget metrics. Ask me anything about your balance, expenses, vendors, or salary!',
         time: 'Just now'
       }
     ];

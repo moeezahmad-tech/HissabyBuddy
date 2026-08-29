@@ -171,7 +171,7 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
                       <Bot className="w-4 h-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">Hisaaby Financial Copilot</h4>
+                      <h4 className="text-xs font-bold text-white">Hissaby Financial Copilot</h4>
                       <p className="text-[10px] text-emerald-400">Grounded strictly in financial data</p>
                     </div>
                   </div>
@@ -231,7 +231,7 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
                 <div className="p-4 rounded-2xl bg-white border border-slate-200">
                   <h4 className="text-sm font-bold text-[#012456]">100% Financial Grounding</h4>
                   <p className="text-xs text-slate-600 mt-1">
-                    Unlike general chatbots, Hisaaby Buddy is strictly dedicated to your numbers. If an irrelevant question is asked, it stays on track: <em>"This is not in my rule."</em>
+                    Unlike general chatbots, Hissaby Buddy is strictly dedicated to your numbers. If an irrelevant question is asked, it stays on track: <em>"This is not in my rule."</em>
                   </p>
                 </div>
 

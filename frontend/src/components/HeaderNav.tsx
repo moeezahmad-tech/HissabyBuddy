@@ -21,7 +21,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = () => {
               <div className="w-11 h-11 rounded-2xl bg-white border border-slate-200 p-1 shadow-sm flex items-center justify-center overflow-hidden group-hover:border-[#5391FE] transition-colors">
                 <img
                   src="/logo.png"
-                  alt="Hisaaby Buddy Logo"
+                  alt="Hissaby Buddy Logo"
                   className="w-full h-full object-contain group-hover:scale-105 transition-transform"
                   onError={(e) => {
                     const target = e.currentTarget;
@@ -34,7 +34,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = () => {
               </div>
               <div>
                 <span className="text-xl font-black text-[#012456] tracking-tight flex items-center gap-1">
-                  Hisaaby <span className="text-[#5391FE]">Buddy</span>
+                  Hissaby <span className="text-[#5391FE]">Buddy</span>
                 </span>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   Financial AI Copilot

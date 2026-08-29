@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-hisaaby-primary: #5391FE;
-  --color-hisaaby-secondary: #012456;
-  --color-hisaaby-dark: #000000;
-  --color-hisaaby-surface: #FFFFFF;
-  --color-hisaaby-subtle: #F8FAFC;
-  --color-hisaaby-border: #E2E8F0;
-  --color-hisaaby-muted: #64748B;
+  --color-hissaby-primary: #5391FE;
+  --color-hissaby-secondary: #012456;
+  --color-hissaby-dark: #000000;
+  --color-hissaby-surface: #FFFFFF;
+  --color-hissaby-subtle: #F8FAFC;
+  --color-hissaby-border: #E2E8F0;
+  --color-hissaby-muted: #64748B;
 }
 
 body {
