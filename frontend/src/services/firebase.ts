@@ -14,12 +14,12 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAZ2msZaJYQMWeli6QYd1N1F8CPb-Fc0JM",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "finsight-ai-e692d.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "finsight-ai-e692d",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "finsight-ai-e692d.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "351939542536",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:351939542536:web:433c42fead3c99f13a1bbd"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || ''
 };
 
 const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
