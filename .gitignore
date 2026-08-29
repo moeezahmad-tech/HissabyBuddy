@@ -1,0 +1,84 @@
+# ==============================================================================
+# Hisaaby Buddy - Comprehensive Git Ignore
+# ==============================================================================
+
+# --- Node & Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Python & Backend ---
+backend/venv/
+backend/.venv/
+backend/env/
+backend/__pycache__/
+backend/*/__pycache__/
+backend/*/*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/build/
+backend/develop-eggs/
+backend/dist/
+backend/downloads/
+backend/eggs/
+backend/.eggs/
+backend/lib/
+backend/lib64/
+backend/parts/
+backend/sdist/
+backend/var/
+backend/wheels/
+backend/pip-wheel-metadata/
+backend/share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Temporary data & caches ---
+backend/data/*.tmp
+backend/data/*.log
+*.log
+
+# --- Environment files (NEVER commit secrets) ---
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env.local
+frontend/.env.*.local
+
+# --- Credentials & API Keys ---
+*firebase*adminsdk*.json
+*service_account*.json
+credentials.json
+token.json
+*.pem
+*.key
+
+# --- IDEs & Editors ---
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+*.sublime-project
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Testing & Coverage ---
+.coverage
+htmlcov/
+.pytest_cache/
