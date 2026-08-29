@@ -111,6 +111,10 @@ async def root():
         ]
     }
 
+@app.get("/api/ping")
+async def ping_keepalive():
+    return {"status": "alive", "service": "Hissaby Buddy API"}
+
 @app.get("/health")
 async def health_check():
     return {

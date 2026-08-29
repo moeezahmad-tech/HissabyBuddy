@@ -8,6 +8,8 @@ import AppView from './components/AppView';
 import AuthModal from './components/AuthModal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CurrencyProvider } from './context/CurrencyContext';
+import { useServerKeepAlive } from './hooks/useServerKeepAlive';
+import { Sparkles, RefreshCw } from 'lucide-react';
 
 // Landing Page Component at Route: "/"
 const HomePage: React.FC = () => {
@@ -76,9 +78,27 @@ const DashboardPage: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const { isWakingUp } = useServerKeepAlive();
+
   return (
     <AuthProvider>
       <CurrencyProvider>
+        {/* Render Cloud Wakeup Banner */}
+        {isWakingUp && (
+          <div className="fixed bottom-5 right-5 z-50 bg-[#012456] text-white px-4 py-3 rounded-2xl shadow-2xl border border-blue-400/30 flex items-center gap-3 animate-fadeIn text-xs">
+            <RefreshCw className="w-4 h-4 text-[#5391FE] animate-spin shrink-0" />
+            <div>
+              <p className="font-bold flex items-center gap-1.5">
+                <span>Waking up cloud backend...</span>
+                <Sparkles className="w-3 h-3 text-[#5391FE]" />
+              </p>
+              <p className="text-[10px] text-slate-300">
+                Render server is spinning up. Ready in ~30 seconds!
+              </p>
+            </div>
+          </div>
+        )}
+
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<HomePage />} />
