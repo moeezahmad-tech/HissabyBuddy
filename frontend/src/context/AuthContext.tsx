@@ -104,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(u);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
           setIsAuthModalOpen(false);
+          dispatchAuthNotification('login', idToken);
         }
       } catch (err: any) {
         console.warn('Redirect result warning:', err);
@@ -140,6 +141,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // Helper to notify backend for automated welcome / login alert emails
+  const dispatchAuthNotification = async (eventType: 'login' | 'signup', token?: string) => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const clientTime = new Date().toLocaleString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      }) + ' (PKT)';
+
+      const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+      let browserName = 'Web Browser';
+      if (userAgent.includes('Edg/')) browserName = 'Microsoft Edge';
+      else if (userAgent.includes('Chrome')) browserName = 'Google Chrome';
+      else if (userAgent.includes('Firefox')) browserName = 'Mozilla Firefox';
+      else if (userAgent.includes('Safari')) browserName = 'Apple Safari';
+
+      const platform = typeof navigator !== 'undefined' ? (navigator.platform || 'Desktop') : 'Desktop';
+
+      fetch(`${apiUrl}/api/auth/notify-login`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          event_type: eventType,
+          device_info: `${browserName} (${platform})`,
+          client_time: clientTime
+        })
+      }).catch((e) => console.warn('Auth notification fetch error:', e));
+    } catch (err) {
+      console.warn(`Auth notification ${eventType} dispatch warning:`, err);
+    }
+  };
+
   // 2. Continue with Google Authentication
   const signInWithGoogle = async () => {
     setLoading(true);
@@ -167,6 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
       setIsAuthModalOpen(false);
+      dispatchAuthNotification('login', idToken);
     } catch (err: any) {
       // If popup was blocked by browser or failed, attempt redirection
       if (err?.code === 'auth/popup-blocked') {
@@ -211,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
       setIsAuthModalOpen(false);
+      dispatchAuthNotification('login', idToken);
     } catch (err: any) {
       setAuthError(formatFirebaseError(err));
     } finally {
@@ -252,6 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
       setIsAuthModalOpen(false);
+      dispatchAuthNotification('signup', idToken);
     } catch (err: any) {
       setAuthError(formatFirebaseError(err));
     } finally {

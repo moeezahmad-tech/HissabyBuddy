@@ -55,9 +55,13 @@ export const GroupSettingsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [expenseMode, setExpenseMode] = useState<ExpenseMode>('equal_split');
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member');
+  const [isInviting, setIsInviting] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isOperatingMember, setIsOperatingMember] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Budget cap state
@@ -175,52 +179,80 @@ export const GroupSettingsPage: React.FC = () => {
   };
 
   const handleInviteMember = async () => {
-    if (!currentWs || !inviteEmail.trim()) return;
+    if (!currentWs || !inviteEmail.trim() || isInviting) return;
+    setIsInviting(true);
     try {
       const emailToInvite = inviteEmail.trim().toLowerCase();
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/workspaces/${currentWs.id}/invitations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
-        },
-        body: JSON.stringify({ email: emailToInvite }),
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        showSuccess(`Invitation email successfully dispatched to ${emailToInvite}!`);
-        const updatedInvite = {
-          id: data.invitation.id,
-          email: data.invitation.invited_email,
-          sentAt: new Date().toISOString(),
-          workspace_id: currentWs.id
-        };
-        setPendingInvites(prev => [updatedInvite, ...prev]);
-        setInviteEmail('');
-      } else {
-        alert(data.error || data.message || 'Failed to send invitation.');
-      }
-    } catch {
-      alert('Failed to send invitation.');
+      const inv = await teamService.inviteMember(currentWs.id, emailToInvite, inviteRole, user?.token);
+      showSuccess(`Invitation email successfully dispatched to ${emailToInvite}!`);
+      const updatedInvite = {
+        id: inv.id,
+        email: inv.invited_email,
+        sentAt: new Date().toISOString(),
+        workspace_id: currentWs.id
+      };
+      setPendingInvites(prev => [updatedInvite, ...prev]);
+      setInviteEmail('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to send invitation.');
+    } finally {
+      setIsInviting(false);
     }
   };
 
   const handleCancelInvite = async (id: string) => {
     if (!currentWs) return;
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/workspaces/invitations/${id}`, {
-        method: 'DELETE',
-        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {},
-      });
-      const data = await response.json();
-      if (data.status === 'success') {
-        setPendingInvites(prev => prev.filter(inv => inv.id !== id));
-        showSuccess('Invitation cancelled successfully.');
-      }
+      await teamService.cancelInvitation(id, user?.token);
+      setPendingInvites(prev => prev.filter(inv => inv.id !== id));
+      showSuccess('Invitation cancelled successfully.');
     } catch {
       alert('Failed to cancel invitation.');
+    }
+  };
+
+  const handleUpdateMemberRole = async (targetUserId: string, newRole: string) => {
+    if (!currentWs || isOperatingMember) return;
+    setIsOperatingMember(true);
+    try {
+      await teamService.updateMemberRole(currentWs.id, targetUserId, newRole, user?.token);
+      showSuccess('Member role updated successfully.');
+      const data = await teamService.getWorkspaces(user?.token, defaultUserEmail);
+      if (data && data.length > 0) setWorkspaces(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update member role.');
+    } finally {
+      setIsOperatingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (targetUserId: string, name: string) => {
+    if (!currentWs || isOperatingMember) return;
+    if (!window.confirm(`Are you sure you want to remove "${name}" from the group?`)) return;
+    setIsOperatingMember(true);
+    try {
+      await teamService.removeMember(currentWs.id, targetUserId, user?.token);
+      showSuccess(`Removed ${name} from the group.`);
+      const data = await teamService.getWorkspaces(user?.token, defaultUserEmail);
+      if (data && data.length > 0) setWorkspaces(data);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove member.');
+    } finally {
+      setIsOperatingMember(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!currentWs || isLeaving) return;
+    if (!window.confirm(`Are you sure you want to leave "${currentWs.name}"?`)) return;
+    setIsLeaving(true);
+    try {
+      await teamService.leaveWorkspace(currentWs.id, user?.token);
+      navigate('/dashboard/teams', { replace: true });
+    } catch (err: any) {
+      alert(err.message || 'Failed to leave group.');
+    } finally {
+      setIsLeaving(false);
     }
   };
 
@@ -228,15 +260,14 @@ export const GroupSettingsPage: React.FC = () => {
     if (!currentWs || deleteConfirmText !== currentWs.name || isDeleting) return;
     setIsDeleting(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      await fetch(`${apiUrl}/api/workspaces/${currentWs.id}`, {
-        method: 'DELETE',
-        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {},
-      }).catch(() => {});
+      await teamService.deleteWorkspace(currentWs.id, user?.token);
       navigate('/dashboard/teams', { replace: true });
-    } catch {
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete workspace.');
       navigate('/dashboard/teams', { replace: true });
-    } finally { setIsDeleting(false); }
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (!currentWs && !isLoading) {
@@ -253,7 +284,7 @@ export const GroupSettingsPage: React.FC = () => {
   const ThemeIcon = themeBadge.Icon;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16 animate-fadeIn">
+    <div className="w-full space-y-6 pb-16 animate-fadeIn">
 
       {/* ── Page Header ───────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 pb-5 border-b border-slate-200">
@@ -432,14 +463,40 @@ export const GroupSettingsPage: React.FC = () => {
         {/* Invite Form */}
         <div className="space-y-3">
           <label className="block text-xs font-bold text-slate-700">Invite by Email</label>
-          <div className="flex gap-2">
-            <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="email"
+              disabled={isInviting}
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="e.g. partner@example.com"
-              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
+              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE] disabled:opacity-60"
             />
-            <button onClick={handleInviteMember} disabled={!inviteEmail.trim()}
-              className="px-4 py-2.5 rounded-xl bg-[#5391FE] disabled:bg-slate-100 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer">
-              <Mail className="w-3.5 h-3.5" /><span>Invite</span>
+            <select
+              disabled={isInviting}
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as any)}
+              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer disabled:opacity-60"
+            >
+              <option value="member">Role: Member</option>
+              <option value="admin">Role: Admin</option>
+            </select>
+            <button
+              onClick={handleInviteMember}
+              disabled={!inviteEmail.trim() || isInviting}
+              className="px-5 py-2.5 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-slate-200 text-white text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+            >
+              {isInviting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Inviting...</span>
+                </>
+              ) : (
+                <>
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Send Invite</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -447,23 +504,54 @@ export const GroupSettingsPage: React.FC = () => {
         {/* Members list */}
         <div className="space-y-2">
           <h3 className="text-xs font-black text-[#012456] mb-2">Current Members ({members.length})</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {members.map((m) => (
-              <div key={m.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-[#012456] text-white flex items-center justify-center text-xs font-black shrink-0">
-                    {(m.display_name || '?').charAt(0).toUpperCase()}
+          <div className="space-y-2">
+            {members.map((m) => {
+              const isMe = m.user_id === user?.uid || (m.role === 'owner' && isOwner);
+              const canManage = isOwner && !isMe;
+              return (
+                <div key={m.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-[#012456] text-white flex items-center justify-center text-xs font-black shrink-0">
+                      {(m.display_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-800 truncate">{m.display_name || m.email}</p>
+                        {isMe && <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded-md">You</span>}
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate">{m.email}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{m.display_name || m.email}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{m.email}</p>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canManage ? (
+                      <>
+                        <select
+                          disabled={isOperatingMember}
+                          value={m.role}
+                          onChange={(e) => handleUpdateMemberRole(m.user_id, e.target.value)}
+                          className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 cursor-pointer shadow-2xs"
+                        >
+                          <option value="member">Member</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        <button
+                          disabled={isOperatingMember}
+                          onClick={() => handleRemoveMember(m.user_id, m.display_name || m.email || 'Member')}
+                          className="text-[11px] font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <span className={`text-[9px] px-2 py-0.5 rounded-md uppercase font-bold border ${m.role === 'owner' ? 'bg-amber-50 text-amber-700 border-amber-200' : m.role === 'admin' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-600 border-slate-200'}`}>
+                        {m.role}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <span className={`text-[8px] px-1.5 py-0.5 rounded-md uppercase font-bold shrink-0 border ${m.role === 'owner' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-white text-slate-600 border-slate-200'}`}>
-                  {m.role}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -478,7 +566,7 @@ export const GroupSettingsPage: React.FC = () => {
                     <Mail className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                     <p className="text-xs font-bold text-amber-800 truncate">{inv.email}</p>
                   </div>
-                  <button onClick={() => handleCancelInvite(inv.id)} className="text-[10px] font-bold text-rose-600 px-2 py-1 rounded-lg hover:bg-rose-50 cursor-pointer">Cancel</button>
+                  <button onClick={() => handleCancelInvite(inv.id)} className="text-[10px] font-bold text-rose-600 px-2 py-1 rounded-lg hover:bg-rose-100/50 cursor-pointer">Cancel</button>
                 </div>
               ))}
             </div>
@@ -490,14 +578,14 @@ export const GroupSettingsPage: React.FC = () => {
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4">
         <div>
           <h2 className="text-base font-black text-rose-600 mb-1">Danger Zone</h2>
-          <p className="text-[11px] text-slate-500 font-semibold">These actions are permanent and cannot be undone.</p>
+          <p className="text-[11px] text-slate-500 font-semibold">These actions affect your workspace membership.</p>
         </div>
 
         {isOwner ? (
           <div className="p-4 rounded-2xl border-2 border-rose-200 bg-rose-50/40 space-y-3">
             <div>
               <p className="text-xs font-black text-rose-700">Delete This Group</p>
-              <p className="text-[10px] text-rose-600 leading-relaxed mt-0.5">Delete all associated transactions, split histories, and members. Enter group name below to confirm.</p>
+              <p className="text-[10px] text-rose-600 leading-relaxed mt-0.5">Permanently delete this group along with all expense records, split histories, and member balances. Enter group name below to confirm.</p>
             </div>
             <input
               type="text"
@@ -518,8 +606,15 @@ export const GroupSettingsPage: React.FC = () => {
         ) : (
           <div className="p-4 rounded-2xl border-2 border-orange-200 bg-orange-50/40 space-y-2">
             <p className="text-xs font-black text-orange-700">Leave Group</p>
-            <p className="text-[10px] text-orange-600">Remove yourself from this shared group ledger.</p>
-            <button className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold cursor-pointer">Leave Group</button>
+            <p className="text-[10px] text-orange-600">Remove yourself from this shared group ledger and clear all local access.</p>
+            <button
+              onClick={handleLeaveGroup}
+              disabled={isLeaving}
+              className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              {isLeaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+              <span>Leave Group</span>
+            </button>
           </div>
         )}
       </div>

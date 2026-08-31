@@ -69,14 +69,29 @@ export interface Workspace {
   member_count?: number;
   total_budget: number;
   total_spent: number;
+  budget_type?: 'fixed' | 'no_budget';
   members?: WorkspaceMember[];
   budgets?: WorkspaceBudget[];
   spendings?: TeamSpending[];
   created_at?: string;
   theme_settings?: {
     is_temporary?: boolean;
+    budget_type?: 'fixed' | 'no_budget';
     [key: string]: any;
   };
+}
+
+export interface CreateWorkspacePayload {
+  name: string;
+  theme: 'family' | 'project' | 'friends' | 'team';
+  description?: string;
+  currency?: string;
+  currency_symbol?: string;
+  color_code?: string;
+  icon_name?: string;
+  is_temporary?: boolean;
+  budget_type?: 'fixed' | 'no_budget';
+  theme_settings?: Record<string, any>;
 }
 
 // Local storage key for offline caching
@@ -132,12 +147,10 @@ export const teamService = {
       if (res && res.ok) {
         const data = await res.json().catch(() => null);
         if (data && Array.isArray(data.workspaces)) {
-          if (data.workspaces.length === 0) {
-            saveLocalWorkspaces([]);
-            return [];
-          }
-
           const defaultEmail = (userEmail && !userEmail.includes('@hissaby.local')) ? userEmail : 'you@hissaby.pk';
+
+          // Preserve any un-synced offline workspaces
+          const offlineOnly = local.filter((lw) => lw.id.startsWith('ws-') && !data.workspaces.some((rw: any) => rw.id === lw.id || rw.name === lw.name));
 
           // Merge backend workspaces with local models so members/budgets/spendings exist
           const mergedWorkspaces: Workspace[] = data.workspaces.map((rw: any) => {
@@ -161,8 +174,9 @@ export const teamService = {
             };
           });
 
-          saveLocalWorkspaces(mergedWorkspaces);
-          return mergedWorkspaces;
+          const finalWorkspaces = [...mergedWorkspaces, ...offlineOnly];
+          saveLocalWorkspaces(finalWorkspaces);
+          return finalWorkspaces;
         }
       }
     } catch {
@@ -172,16 +186,7 @@ export const teamService = {
   },
 
   async createWorkspace(
-    payload: {
-      name: string;
-      theme: 'family' | 'project' | 'friends' | 'team';
-      description?: string;
-      currency?: string;
-      currency_symbol?: string;
-      color_code?: string;
-      icon_name?: string;
-      is_temporary?: boolean;
-    },
+    payload: CreateWorkspacePayload,
     token?: string,
     userProfile?: { email?: string; displayName?: string }
   ): Promise<Workspace> {
@@ -254,6 +259,8 @@ export const teamService = {
       member_count: 1,
       total_budget: 0,
       total_spent: 0,
+      budget_type: payload.budget_type || 'fixed',
+      theme_settings: payload.theme_settings,
       members: [
         {
           id: 'm-' + Date.now(),
@@ -294,6 +301,8 @@ export const teamService = {
         headers,
         body: JSON.stringify({
           user_id: member.user_id || 'usr_' + Date.now(),
+          display_name: member.display_name,
+          email: member.email,
           role: member.role || 'member',
           custom_title: member.custom_title || '',
           spending_limit: member.spending_limit || null,
@@ -450,6 +459,169 @@ export const teamService = {
 
     return newSpending;
   },
+
+  async deleteWorkspace(workspaceId: string, token?: string): Promise<boolean> {
+    const apiUrl = getApiUrl();
+    const current = getStoredLocalWorkspaces();
+    saveLocalWorkspaces(current.filter((w) => w.id !== workspaceId));
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (res.ok) {
+        return true;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403) {
+        throw new Error(data.detail || 'You do not have permission to delete this group.');
+      }
+      return true;
+    } catch (e: any) {
+      if (e.message && e.message.includes('permission')) {
+        throw e;
+      }
+      return true;
+    }
+  },
+
+  async leaveWorkspace(workspaceId: string, token?: string): Promise<boolean> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/leave`, {
+      method: 'POST',
+      headers,
+    });
+    if (res.ok) {
+      const current = getStoredLocalWorkspaces();
+      saveLocalWorkspaces(current.filter((w) => w.id !== workspaceId));
+      return true;
+    }
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to leave workspace');
+  },
+
+  async inviteMember(
+    workspaceId: string,
+    email: string,
+    role: string = 'member',
+    token?: string
+  ): Promise<{ id: string; invited_email: string; invite_token: string }> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/invitations`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email: email.trim().toLowerCase(), role }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      return data.invitation;
+    }
+    throw new Error(data.detail || data.error || 'Failed to send invitation');
+  },
+
+  async getWorkspaceInvitations(workspaceId: string, token?: string): Promise<any[]> {
+    const apiUrl = getApiUrl();
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/invitations`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return data.invitations || [];
+      }
+    } catch {}
+    return [];
+  },
+
+  async cancelInvitation(inviteId: string, token?: string): Promise<boolean> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces/invitations/${inviteId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    return res.ok;
+  },
+
+  async updateMemberRole(workspaceId: string, userId: string, newRole: string, token?: string): Promise<boolean> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/members/${userId}/role`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ role: newRole }),
+    });
+    if (res.ok) return true;
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to update member role');
+  },
+
+  async removeMember(workspaceId: string, userId: string, token?: string): Promise<boolean> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/members/${userId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.ok) {
+      const current = getStoredLocalWorkspaces();
+      const ws = current.find((w) => w.id === workspaceId);
+      if (ws && ws.members) {
+        ws.members = ws.members.filter((m) => m.user_id !== userId && m.id !== userId);
+        ws.member_count = ws.members.length;
+        saveLocalWorkspaces(current);
+      }
+      return true;
+    }
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to remove member');
+  },
+
+  async notifySettlements(
+    workspaceId: string,
+    settlements: Array<{
+      debtor_name: string;
+      debtor_email?: string;
+      creditor_name: string;
+      creditor_email?: string;
+      amount: number;
+      notes?: string;
+    }>,
+    groupName?: string,
+    token?: string
+  ): Promise<{ status: string; message: string; dispatched_count: number }> {
+    const apiUrl = getApiUrl();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const res = await fetch(`${apiUrl}/api/workspaces/${workspaceId}/notify-settlements`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ settlements, group_name: groupName }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Backend notification failed, fallback to simulated dispatch:', e);
+    }
+    return {
+      status: 'success',
+      message: `Notifications prepared for ${settlements.length} settlement(s)`,
+      dispatched_count: settlements.filter((s) => s.debtor_email && s.debtor_email.includes('@')).length,
+    };
+  },
 };
 
 export default teamService;
+

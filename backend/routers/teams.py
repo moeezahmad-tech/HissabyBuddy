@@ -30,12 +30,18 @@ class WorkspaceCreate(BaseModel):
     creator_email: Optional[str] = None
     creator_name: Optional[str] = None
     is_temporary: Optional[bool] = False
+    budget_type: Optional[str] = "fixed" # "fixed" or "no_budget"
 
 class MemberAdd(BaseModel):
     user_id: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
     role: str = "member"
     spending_limit: Optional[float] = None
     custom_title: Optional[str] = ""
+
+class MemberRoleUpdate(BaseModel):
+    role: str = "member"
 
 class BudgetCategoryAllocation(BaseModel):
     category: str
@@ -92,6 +98,19 @@ class SettlementCreate(BaseModel):
     currency: Optional[str] = "PKR"
     notes: Optional[str] = None
 
+class SettlementItem(BaseModel):
+    debtor_name: str
+    debtor_email: Optional[str] = None
+    creditor_name: str
+    creditor_email: Optional[str] = None
+    amount: float
+    notes: Optional[str] = None
+
+class SettlementNotificationRequest(BaseModel):
+    settlements: List[SettlementItem]
+    group_name: Optional[str] = None
+
+
 # ------------------------------------------------------------------------------
 # RATE LIMITING & MULTI-CLICK DEDUPLICATION
 # ------------------------------------------------------------------------------
@@ -113,7 +132,7 @@ async def list_workspaces(user: Dict[str, Any] = Depends(get_current_user)):
     return {"status": "success", "workspaces": workspaces}
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_workspace(payload: WorkspaceCreate, user: Dict[str, Any] = Depends(get_current_user)):
+async def create_workspace(payload: WorkspaceCreate, background_tasks: BackgroundTasks, user: Dict[str, Any] = Depends(get_current_user)):
     uid = user.get("uid", "guest_user")
     valid_themes = ["project", "family", "friends", "team"]
     theme = payload.theme.lower()
@@ -149,6 +168,8 @@ async def create_workspace(payload: WorkspaceCreate, user: Dict[str, Any] = Depe
         t_settings = payload.theme_settings or {}
         if payload.is_temporary:
             t_settings["is_temporary"] = True
+        if payload.budget_type:
+            t_settings["budget_type"] = payload.budget_type
 
         ws = storage_service.create_workspace(
             name=clean_name,
@@ -167,6 +188,22 @@ async def create_workspace(payload: WorkspaceCreate, user: Dict[str, Any] = Depe
         timestamps.append(now)
         _workspace_creation_timestamps[uid] = timestamps
         _recent_creations[dup_key] = (now, ws)
+
+        # Dispatch automated Group Creation confirmation email to the creator
+        if creator_email and "@" in creator_email and "@hissaby.local" not in creator_email:
+            try:
+                from services.email_service import EmailService
+                background_tasks.add_task(
+                    EmailService.send_group_creation_email,
+                    to_email=creator_email.strip(),
+                    creator_name=creator_name,
+                    group_name=clean_name,
+                    group_theme=theme,
+                    currency=payload.currency or "PKR",
+                    workspace_id=str(ws.get("id", ""))
+                )
+            except Exception as mail_err:
+                logger.error(f"Failed to queue group creation email: {mail_err}")
 
         return {"status": "success", "workspace": ws}
     except Exception as e:
@@ -191,9 +228,91 @@ async def get_workspace_details(workspace_id: str, user: Dict[str, Any] = Depend
         "custom_fields": custom_fields
     }
 
+@router.delete("/{workspace_id}")
+async def delete_workspace(workspace_id: str, background_tasks: BackgroundTasks, user: Dict[str, Any] = Depends(get_current_user)):
+    """Deletes a workspace permanently. Only workspace Owners and Admins are authorized."""
+    uid = user.get("uid", "guest_user")
+    try:
+        # Fetch group and member details prior to deletion for email notification
+        ws = storage_service.get_workspace(workspace_id)
+        members = storage_service.get_workspace_members(workspace_id) if ws else []
+        group_name = ws.get("name", "Group Workspace") if ws else "Group Workspace"
+        deleter_name = user.get("name") or user.get("display_name") or "Workspace Admin"
+
+        storage_service.delete_workspace(workspace_id=workspace_id, requesting_user_id=uid)
+
+        # Dispatch deletion notice to all active members in the background
+        if members:
+            try:
+                from services.email_service import EmailService
+                for m in members:
+                    m_email = m.get("email")
+                    m_name = m.get("display_name") or "Group Member"
+                    if m_email and "@" in m_email and "@hissaby.local" not in m_email:
+                        background_tasks.add_task(
+                            EmailService.send_group_deletion_email,
+                            to_email=m_email.strip(),
+                            member_name=m_name,
+                            group_name=group_name,
+                            deleted_by=deleter_name
+                        )
+            except Exception as mail_err:
+                logger.error(f"Failed to queue group deletion emails: {mail_err}")
+
+        return {"status": "success", "message": f"Workspace {workspace_id} deleted successfully"}
+    except PermissionError as pe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{workspace_id}/leave")
+async def leave_workspace(workspace_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Allows an active member to leave the workspace."""
+    uid = user.get("uid", "guest_user")
+    try:
+        storage_service.leave_workspace(workspace_id=workspace_id, requesting_user_id=uid)
+        return {"status": "success", "message": "Successfully left the workspace"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ------------------------------------------------------------------------------
 # MEMBERS
 # ------------------------------------------------------------------------------
+
+@router.put("/{workspace_id}/members/{target_user_id}/role")
+async def update_member_role(workspace_id: str, target_user_id: str, payload: MemberRoleUpdate, user: Dict[str, Any] = Depends(get_current_user)):
+    """Updates a member's role (e.g. member -> admin). Only workspace Owners and Admins can perform this."""
+    uid = user.get("uid", "guest_user")
+    try:
+        res = storage_service.update_member_role(
+            workspace_id=workspace_id,
+            target_user_id=target_user_id,
+            new_role=payload.role,
+            requesting_user_id=uid
+        )
+        return {"status": "success", "member": res}
+    except PermissionError as pe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{workspace_id}/members/{target_user_id}")
+async def remove_member(workspace_id: str, target_user_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Removes a member from the workspace. Only workspace Owners and Admins can perform this."""
+    uid = user.get("uid", "guest_user")
+    try:
+        storage_service.remove_workspace_member(
+            workspace_id=workspace_id,
+            target_user_id=target_user_id,
+            requesting_user_id=uid
+        )
+        return {"status": "success", "message": f"Member {target_user_id} removed successfully"}
+    except PermissionError as pe:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{workspace_id}/members")
 async def get_workspace_members(workspace_id: str, user: Dict[str, Any] = Depends(get_current_user)):
@@ -202,6 +321,25 @@ async def get_workspace_members(workspace_id: str, user: Dict[str, Any] = Depend
 
 @router.post("/{workspace_id}/members", status_code=status.HTTP_201_CREATED)
 async def add_workspace_member(workspace_id: str, payload: MemberAdd, user: Dict[str, Any] = Depends(get_current_user)):
+    conn = storage_service.get_conn()
+    try:
+        from psycopg2.extras import RealDictCursor
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM users WHERE id = %s;", (payload.user_id,))
+            if not cur.fetchone():
+                display_email = payload.email or f"{payload.user_id}@hissaby.local"
+                display_name = payload.display_name or "Workspace Member"
+                cur.execute("""
+                    INSERT INTO users (id, email, display_name, default_currency, currency_symbol)
+                    VALUES (%s, %s, %s, 'PKR', 'Rs ')
+                    ON CONFLICT (id) DO NOTHING;
+                """, (payload.user_id, display_email, display_name))
+                conn.commit()
+    except Exception as db_err:
+        logger.error(f"Failed to ensure user existence in add_workspace_member: {db_err}")
+    finally:
+        storage_service.put_conn(conn)
+
     try:
         member = storage_service.add_workspace_member(
             workspace_id=workspace_id,
@@ -405,6 +543,9 @@ async def get_workspace_invitations(workspace_id: str, user: Dict[str, Any] = De
                 item["created_at"] = str(item["created_at"])
                 invites.append(item)
             return {"status": "success", "invitations": invites}
+    except Exception as e:
+        logger.error(f"Error fetching workspace invitations for {workspace_id}: {e}")
+        return {"status": "success", "invitations": []}
     finally:
         storage_service.put_conn(conn)
 
@@ -506,7 +647,12 @@ async def accept_workspace_invitation(token: str, user: Dict[str, Any] = Depends
             role = invite["role"]
 
             # Ensure user exists in target
-            storage_service._ensure_user(cur, uid)
+            storage_service._ensure_user(
+                cur, 
+                uid, 
+                email=user.get("email"), 
+                display_name=user.get("name") or user.get("display_name")
+            )
 
             # Add member to workspace_members
             cur.execute("""
@@ -570,3 +716,36 @@ async def create_custom_field(workspace_id: str, payload: CustomFieldCreate, use
         return {"status": "success", "custom_field": cf}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{workspace_id}/notify-settlements")
+async def notify_settlements(
+    workspace_id: str,
+    payload: SettlementNotificationRequest,
+    background_tasks: BackgroundTasks,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Dispatches settlement notification emails to all debtors with the exact amounts and payment recipient."""
+    from services.email_service import EmailService
+    
+    group_name = payload.group_name or "Hissaby Workspace"
+    notified_count = 0
+    
+    for item in payload.settlements:
+        if item.debtor_email and "@" in item.debtor_email and not item.debtor_email.endswith("@hissaby.local"):
+            background_tasks.add_task(
+                EmailService.send_settlement_notification,
+                to_email=item.debtor_email.strip(),
+                debtor_name=item.debtor_name,
+                creditor_name=item.creditor_name,
+                group_name=group_name,
+                amount=item.amount,
+                notes=item.notes or ""
+            )
+            notified_count += 1
+            
+    return {
+        "status": "success",
+        "message": f"Settlement notifications dispatched for {len(payload.settlements)} payment(s).",
+        "dispatched_count": notified_count
+    }
+

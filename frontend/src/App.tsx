@@ -22,6 +22,7 @@ import LoginPage from './components/LoginPage';
 import AboutPage from './components/AboutPage';
 import TechKreativePage from './components/TechKreativePage';
 import ContactPage from './components/ContactPage';
+import CreateGroupWizard from './components/CreateGroupWizard';
 
 // Landing Page Component at Route: "/"
 const HomePage: React.FC = () => {
@@ -101,6 +102,7 @@ export const App: React.FC = () => {
             <Route path="/dashboard" element={<ProtectedDashboardLayout />}>
               <Route index element={<DashboardView />} />
               <Route path="teams" element={<TeamsGroupsView />} />
+              <Route path="teams/create" element={<CreateGroupWizard />} />
               <Route path="teams/settings" element={<GroupSettingsPage />} />
               <Route path="loans" element={<LoansView />} />
               <Route path="recurring" element={<RecurringMoneyView />} />
@@ -110,6 +112,7 @@ export const App: React.FC = () => {
             </Route>
 
             {/* Shorthand alias routes for direct URL navigation */}
+            <Route path="/teams/create" element={<Navigate to="/dashboard/teams/create" replace />} />
             <Route path="/teams" element={<Navigate to="/dashboard/teams" replace />} />
             <Route path="/loans" element={<Navigate to="/dashboard/loans" replace />} />
             <Route path="/recurring" element={<Navigate to="/dashboard/recurring" replace />} />

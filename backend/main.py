@@ -22,6 +22,8 @@ from routers.dashboard import register_document_financials
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hissaby.api")
 
+# Reload trigger: auth notify routes updated
+
 app = FastAPI(
     title="Hissaby Buddy API",
     description="Backend API for Hissaby Buddy - Groq Vision, Pinecone RAG, Firebase Auth & Neon DB",
@@ -49,24 +51,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Exception Handlers
+def make_cors_json_response(status_code: int, content: dict, request: Request) -> JSONResponse:
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
+
+# Exception Handlers with guaranteed CORS headers
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     logger.warning(f"HTTP {exc.status_code} at {request.url.path}: {exc.detail}")
-    return JSONResponse(
+    return make_cors_json_response(
         status_code=exc.status_code,
         content={
             "success": False,
             "status_code": exc.status_code,
             "error": exc.detail,
             "path": request.url.path
-        }
+        },
+        request=request
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.warning(f"Validation error at {request.url.path}: {exc.errors()}")
-    return JSONResponse(
+    return make_cors_json_response(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "success": False,
@@ -74,13 +87,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": "Validation Error",
             "details": exc.errors(),
             "path": request.url.path
-        }
+        },
+        request=request
     )
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error at {request.url.path}: {str(exc)}", exc_info=True)
-    return JSONResponse(
+    return make_cors_json_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
@@ -88,7 +102,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "error": "Internal Server Error",
             "message": "An unexpected error occurred. Please try again later.",
             "path": request.url.path
-        }
+        },
+        request=request
     )
 
 @app.on_event("startup")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar, TrendingUp, TrendingDown, RefreshCw, BarChart2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -38,11 +38,8 @@ export const DailySpendingChart: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  const fetchDailyData = async () => {
+  const fetchDailyData = useCallback(async () => {
     setLoading(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -54,7 +51,7 @@ export const DailySpendingChart: React.FC = () => {
       }
       const res = await fetch(`${apiUrl}/api/dashboard/spending-trends`, {
         headers,
-        signal: controller.signal,
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(8000) : undefined,
       }).catch(() => null);
 
       if (res && res.ok) {
@@ -65,16 +62,15 @@ export const DailySpendingChart: React.FC = () => {
         }
       }
     } catch {
-      // fallback to cached/initial
+      // Silently fallback on timeout or network issue
     } finally {
-      clearTimeout(timeoutId);
       setLoading(false);
     }
-  };
+  }, [user?.token, user?.uid]);
 
   useEffect(() => {
     fetchDailyData();
-  }, [user?.uid]);
+  }, [fetchDailyData]);
 
   const maxVal = Math.max(
     ...dailyData.map(d => Math.max(d.spend, d.income)),

@@ -9,10 +9,6 @@ from core.config import settings
 
 logger = logging.getLogger("hissaby.storage")
 
-# Migration path for one-time legacy transfer from hissaby_store.json
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-STORE_FILE = os.path.join(DATA_DIR, "hissaby_store.json")
-
 class PostgresStorageService:
     def __init__(self):
         self.conn_url = settings.DATABASE_URL
@@ -21,7 +17,6 @@ class PostgresStorageService:
         self._initial_migration_done = False
         self._ensured_users = set()
         self._currency_cache = {}
-        self._migrate_legacy_file_if_needed()
 
     def _init_pool(self):
         try:
@@ -51,123 +46,28 @@ class PostgresStorageService:
         if self._pool and conn:
             self._pool.putconn(conn)
 
-    def _ensure_user(self, cursor, uid: str) -> bool:
-        """Ensure user row exists in Neon DB (cached in-memory so read queries don't write to DB)."""
+    def _ensure_user(self, cursor, uid: str, email: Optional[str] = None, display_name: Optional[str] = None) -> bool:
+        """Ensure user row exists in Neon DB with strict primary and foreign key safety."""
         if not uid:
             uid = "guest_user"
-        if uid in self._ensured_users:
-            return False
+        
+        display_email = email or f"{uid}@hissaby.local"
+        display_n = display_name or ("User" if uid != "guest_user" else "Guest User")
+
         cursor.execute("""
             INSERT INTO users (id, email, display_name, default_currency, currency_symbol)
             VALUES (%s, %s, %s, 'PKR', 'Rs ')
-            ON CONFLICT (id) DO NOTHING;
-        """, (uid, f"{uid}@hissaby.local", "User" if uid != "guest_user" else "Guest User"))
+            ON CONFLICT (id) DO UPDATE SET
+                email = CASE WHEN EXCLUDED.email NOT LIKE '%%@hissaby.local' THEN EXCLUDED.email ELSE users.email END,
+                display_name = CASE WHEN EXCLUDED.display_name NOT IN ('User', 'Guest User') THEN EXCLUDED.display_name ELSE users.display_name END;
+        """, (uid, display_email, display_n))
 
         cursor.execute("""
             INSERT INTO user_settings (user_id, monthly_budget_goal, dark_mode)
             VALUES (%s, 50000.00, TRUE)
             ON CONFLICT (user_id) DO NOTHING;
         """, (uid,))
-        self._ensured_users.add(uid)
         return True
-
-    def _migrate_legacy_file_if_needed(self):
-        """One-time migration from hissaby_store.json into Neon DB if tables are empty."""
-        if not os.path.exists(STORE_FILE):
-            return
-        conn = None
-        try:
-            conn = self.get_conn()
-            with conn.cursor() as cur:
-                # Check if transactions already exist
-                cur.execute("SELECT COUNT(*) FROM transactions;")
-                tx_count = cur.fetchone()[0]
-                if tx_count > 0:
-                    logger.info("Neon DB already populated with transactions. Skipping legacy file migration.")
-                    return
-
-                logger.info("Migrating legacy data from hissaby_store.json to Neon DB...")
-                with open(STORE_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                # Migrate users & currencies
-                currencies = data.get("currencies", {})
-                symbols = data.get("symbols", {})
-                balances = data.get("balances", {})
-
-                all_uids = set(data.get("transactions", {}).keys()) | set(balances.keys()) | set(currencies.keys())
-                for uid in all_uids:
-                    self._ensure_user(cur, uid)
-                    curr = currencies.get(uid, "PKR")
-                    sym = symbols.get(uid, "Rs ")
-                    cur.execute("""
-                        UPDATE users SET default_currency = %s, currency_symbol = %s WHERE id = %s;
-                    """, (curr, sym, uid))
-                    
-                    bal = balances.get(uid, 0.0)
-                    cur.execute("""
-                        UPDATE user_settings SET monthly_budget_goal = %s WHERE user_id = %s;
-                    """, (bal, uid))
-
-                # Migrate transactions
-                for uid, tx_list in data.get("transactions", {}).items():
-                    self._ensure_user(cur, uid)
-                    for tx in tx_list:
-                        raw_amt = float(tx.get("amount", 0.0))
-                        tx_type = "income" if raw_amt > 0 and tx.get("category") == "Salary & Income" else ("income" if raw_amt > 0 else "expense")
-                        abs_amt = abs(raw_amt)
-                        cur.execute("""
-                            INSERT INTO transactions (
-                                user_id, amount, type, category, description,
-                                source, status, metadata
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                        """, (
-                            uid, abs_amt, tx_type, tx.get("category", "General"),
-                            tx.get("name") or tx.get("purpose") or "Transaction",
-                            tx.get("source", "manual"), tx.get("status", "cleared"),
-                            json.dumps(tx)
-                        ))
-
-                # Migrate recurring items
-                for uid, rec_list in data.get("recurring", {}).items():
-                    self._ensure_user(cur, uid)
-                    for rec in rec_list:
-                        cur.execute("""
-                            INSERT INTO recurring_items (
-                                user_id, title, amount, type, category, billing_cycle,
-                                start_date, next_due_date, auto_pay, status, notes
-                            ) VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', %s, %s, %s);
-                        """, (
-                            uid, rec.get("name", "Subscription"), abs(float(rec.get("amount", 0.0))),
-                            "expense" if float(rec.get("amount", 0.0)) < 0 else "income",
-                            rec.get("category", "Subscriptions"), "monthly",
-                            rec.get("autoDebit", False), rec.get("status", "active"),
-                            rec.get("payee", "")
-                        ))
-
-                # Migrate documents
-                for uid, doc_list in data.get("documents", {}).items():
-                    self._ensure_user(cur, uid)
-                    for doc in doc_list:
-                        cur.execute("""
-                            INSERT INTO documents (
-                                user_id, title, file_url, file_type, ocr_status,
-                                extracted_amount, raw_ocr_data
-                            ) VALUES (%s, %s, %s, %s, 'processed', %s, %s);
-                        """, (
-                            uid, doc.get("filename", "Receipt Document"), doc.get("file_url", ""),
-                            doc.get("type", "pdf"), abs(float(doc.get("total", 0.0))),
-                            json.dumps(doc)
-                        ))
-
-                conn.commit()
-                logger.info("Successfully imported legacy records into Neon DB!")
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"Error migrating legacy store to Neon DB: {e}")
-        finally:
-            self.put_conn(conn)
 
     # --------------------------------------------------------------------------
     # TRANSACTIONS
@@ -697,7 +597,18 @@ class PostgresStorageService:
         cur.execute("""
             INSERT INTO custom_field_definitions (
                 workspace_id, created_by, target_entity, field_name, field_key,
-                field_type, description, options
+                fielreact-dom_client.js?v=75ed78d3:14336 Download the React DevTools for a better development experience: https://react.dev/link/react-devtools
+settings?id=4a948260-4f3f-477b-9ffc-72d9989bc3f4&tab=members:1 Access to fetch at 'http://localhost:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations:1  Failed to load resource: net::ERR_FAILED
+settings?id=4a948260-4f3f-477b-9ffc-72d9989bc3f4&tab=members:1 Access to fetch at 'http://localhost:8000/api/dashboard/notifications' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/dashboard/notifications:1  Failed to load resource: net::ERR_FAILED
+settings?id=4a948260-4f3f-477b-9ffc-72d9989bc3f4&tab=members:1 Access to fetch at 'http://localhost:8000/api/dashboard/notifications' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/dashboard/notifications:1  Failed to load resource: net::ERR_FAILED
+settings?id=4a948260-4f3f-477b-9ffc-72d9989bc3f4&tab=members:1 Access to fetch at 'http://localhost:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations:1  Failed to load resource: net::ERR_FAILED
+settings?id=4a948260-4f3f-477b-9ffc-72d9989bc3f4&tab=members:1 Access to fetch at 'http://localhost:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+:8000/api/workspaces/4a948260-4f3f-477b-9ffc-72d9989bc3f4/invitations:1  Failed to load resource: net::ERR_FAILED
+d_type, description, options
             ) VALUES (%s, %s, 'transaction', %s, %s, %s, %s, %s)
             ON CONFLICT (workspace_id, target_entity, field_key) DO NOTHING;
         """, (ws_id, user_id, label, key, ftype, desc, json.dumps(options or [])))
@@ -829,6 +740,146 @@ class PostgresStorageService:
         except Exception as e:
             logger.error(f"Error getting workspace members {workspace_id}: {e}")
             return []
+        finally:
+            self.put_conn(conn)
+
+    def delete_workspace(self, workspace_id: str, requesting_user_id: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT role FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, requesting_user_id))
+                member = cur.fetchone()
+                if not member:
+                    cur.execute("SELECT created_by FROM workspaces WHERE id::text = %s;", (workspace_id,))
+                    ws = cur.fetchone()
+                    if ws and (ws["created_by"] == requesting_user_id or requesting_user_id == "guest_user"):
+                        role = "owner"
+                    else:
+                        raise PermissionError("You must be an Owner or Admin to delete this workspace.")
+                else:
+                    role = member["role"]
+
+                if role not in ["owner", "admin"]:
+                    raise PermissionError("Only Owners and Admins can delete a workspace.")
+
+                cur.execute("DELETE FROM workspaces WHERE id::text = %s;", (workspace_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error deleting workspace {workspace_id}: {e}")
+            raise
+        finally:
+            self.put_conn(conn)
+
+    def leave_workspace(self, workspace_id: str, requesting_user_id: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT role FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, requesting_user_id))
+                member = cur.fetchone()
+                if not member:
+                    raise ValueError("You are not an active member of this workspace.")
+
+                if member["role"] == "owner":
+                    cur.execute("""
+                        SELECT COUNT(*) as count FROM workspace_members
+                        WHERE workspace_id::text = %s AND role = 'owner';
+                    """, (workspace_id,))
+                    res = cur.fetchone()
+                    if res and res["count"] <= 1:
+                        raise ValueError("Sole owners cannot leave the group. Please transfer ownership or delete the group.")
+
+                cur.execute("""
+                    DELETE FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, requesting_user_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error leaving workspace {workspace_id}: {e}")
+            raise
+        finally:
+            self.put_conn(conn)
+
+    def update_member_role(self, workspace_id: str, target_user_id: str, new_role: str, requesting_user_id: str) -> Dict[str, Any]:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT role FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, requesting_user_id))
+                requester = cur.fetchone()
+                if not requester or requester["role"] not in ["owner", "admin"]:
+                    raise PermissionError("Only Owners and Admins can update member roles.")
+
+                cur.execute("""
+                    UPDATE workspace_members
+                    SET role = %s
+                    WHERE workspace_id::text = %s AND user_id = %s
+                    RETURNING id, workspace_id, user_id, role, custom_title;
+                """, (new_role, workspace_id, target_user_id))
+                updated = cur.fetchone()
+                if not updated:
+                    raise ValueError("Member not found in workspace.")
+                conn.commit()
+                res = dict(updated)
+                res["id"] = str(res["id"])
+                res["workspace_id"] = str(res["workspace_id"])
+                return res
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating member role: {e}")
+            raise
+        finally:
+            self.put_conn(conn)
+
+    def remove_workspace_member(self, workspace_id: str, target_user_id: str, requesting_user_id: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT role FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, requesting_user_id))
+                requester = cur.fetchone()
+                if not requester or requester["role"] not in ["owner", "admin"]:
+                    raise PermissionError("Only Owners and Admins can remove members.")
+
+                cur.execute("""
+                    SELECT role FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, target_user_id))
+                target = cur.fetchone()
+                if target and target["role"] == "owner":
+                    raise PermissionError("The workspace owner cannot be removed.")
+
+                cur.execute("""
+                    DELETE FROM workspace_members
+                    WHERE workspace_id::text = %s AND user_id = %s;
+                """, (workspace_id, target_user_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error removing member from workspace: {e}")
+            raise
         finally:
             self.put_conn(conn)
 

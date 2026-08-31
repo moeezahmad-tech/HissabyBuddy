@@ -4,7 +4,8 @@ import {
   Users, Plus, ShoppingBag, Briefcase, Home, UserPlus, Receipt,
   CheckCircle2, RefreshCw, X, PieChart, Repeat, Wallet, TrendingDown,
   ArrowDownLeft, CalendarClock, AlertCircle, Crown, SplitSquareVertical,
-  Settings2, Check, Trash2, Mail, LogOut, ShieldAlert, Info
+  Settings2, Check, Trash2, Mail, LogOut, ShieldAlert, Info,
+  Bell, Send, Share2, Copy, MessageSquare, ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -15,6 +16,17 @@ import type { Workspace } from '../services/teamService';
 type ExpenseMode = 'equal_split' | 'single_payer' | 'custom_percent';
 type TabId = 'overview' | 'members' | 'expenses' | 'recurring';
 type SettingsTabId = 'info' | 'payment' | 'members' | 'danger';
+
+export interface SettlementTransaction {
+  id: string;
+  fromMemberId: string;
+  fromMemberName: string;
+  fromMemberEmail?: string;
+  toMemberId: string;
+  toMemberName: string;
+  toMemberEmail?: string;
+  amount: number;
+}
 
 interface RecurringGroupPayment {
   id: string;
@@ -84,12 +96,18 @@ export const TeamsGroupsView: React.FC = () => {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+  const [isSendingNotifications, setIsSendingNotifications] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>('info');
 
   // ── UI feedback ───────────────────────────────────────────────────────────
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isAddingRecurring, setIsAddingRecurring] = useState(false);
 
   // ── Settings state ─────────────────────────────────────────────────────────
   const [expenseMode, setExpenseMode] = useState<ExpenseMode>('equal_split');
@@ -198,10 +216,120 @@ export const TeamsGroupsView: React.FC = () => {
     return { fairShare, memberPaidMap };
   }, [members, spendings, totalSpent]);
 
+  // ── Calculate pairwise debts (Who pays Whom) ──────────────────────────────
+  const settlementTransactions = useMemo<SettlementTransaction[]>(() => {
+    if (expenseMode === 'single_payer' || members.length < 2) return [];
+    const debtors = splitSummary.memberPaidMap
+      .filter((m) => m.net < -0.5)
+      .map((m) => ({
+        id: m.member.id || m.member.user_id,
+        name: m.member.display_name || m.member.email || 'Member',
+        email: m.member.email,
+        amount: Math.abs(m.net),
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const creditors = splitSummary.memberPaidMap
+      .filter((m) => m.net > 0.5)
+      .map((m) => ({
+        id: m.member.id || m.member.user_id,
+        name: m.member.display_name || m.member.email || 'Member',
+        email: m.member.email,
+        amount: m.net,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const results: SettlementTransaction[] = [];
+    let d = 0;
+    let c = 0;
+    const dList = debtors.map((i) => ({ ...i }));
+    const cList = creditors.map((i) => ({ ...i }));
+
+    while (d < dList.length && c < cList.length) {
+      const debtor = dList[d];
+      const creditor = cList[c];
+      const settleAmt = Math.min(debtor.amount, creditor.amount);
+
+      if (settleAmt > 0.5) {
+        results.push({
+          id: `stl-${d}-${c}-${debtor.id}`,
+          fromMemberId: debtor.id,
+          fromMemberName: debtor.name,
+          fromMemberEmail: debtor.email,
+          toMemberId: creditor.id,
+          toMemberName: creditor.name,
+          toMemberEmail: creditor.email,
+          amount: Math.round(settleAmt),
+        });
+      }
+
+      debtor.amount -= settleAmt;
+      creditor.amount -= settleAmt;
+
+      if (debtor.amount <= 0.5) d++;
+      if (creditor.amount <= 0.5) c++;
+    }
+
+    return results;
+  }, [splitSummary, expenseMode, members.length]);
+
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const showSuccess = (msg: string) => {
     setActionSuccessMsg(msg);
     setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  const handleSendSettlementEmails = async () => {
+    if (!currentWs || settlementTransactions.length === 0 || isSendingNotifications) return;
+    setIsSendingNotifications(true);
+    try {
+      const payload = settlementTransactions.map((tx) => ({
+        debtor_name: tx.fromMemberName,
+        debtor_email: tx.fromMemberEmail,
+        creditor_name: tx.toMemberName,
+        creditor_email: tx.toMemberEmail,
+        amount: tx.amount,
+        notes: `Settlement for ${currentWs.name} shared expenses`,
+      }));
+
+      const res = await teamService.notifySettlements(currentWs.id, payload, currentWs.name, user?.token);
+      showSuccess(`Payment reminder notifications dispatched for ${res.dispatched_count || payload.length} member(s)!`);
+      setIsNotifyModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to dispatch notifications.');
+    } finally {
+      setIsSendingNotifications(false);
+    }
+  };
+
+  const handleShareWhatsApp = (singleTx?: SettlementTransaction) => {
+    if (!currentWs) return;
+    let text = '';
+    if (singleTx) {
+      text = `*Payment Reminder for ${currentWs.name}*\n` +
+        `Salam ${singleTx.fromMemberName},\n` +
+        `You have a shared expense balance of *Rs ${singleTx.amount.toLocaleString()}* to pay to *${singleTx.toMemberName}*.\n` +
+        `Please transfer when convenient. Thanks!`;
+    } else {
+      text = `📊 *${currentWs.name} - Settlement Summary*\n` +
+        `Total Group Spending: Rs ${totalSpent.toLocaleString()}\n\n` +
+        `*Dues & Settlement Required:*\n` +
+        settlementTransactions.map((tx, idx) => `${idx + 1}. *${tx.fromMemberName}* pays *${tx.toMemberName}* → Rs ${tx.amount.toLocaleString()}`).join('\n') +
+        `\n\nPlease transfer via JazzCash/EasyPaisa/Bank Transfer and confirm in Hissaby Buddy!`;
+    }
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCopySummary = () => {
+    if (!currentWs) return;
+    const text = `📊 ${currentWs.name} - Expense Split Breakdown\n` +
+      `Total Spent: Rs ${totalSpent.toLocaleString()}\n\n` +
+      `Settlements:\n` +
+      settlementTransactions.map((tx) => `• ${tx.fromMemberName} owes ${tx.toMemberName}: Rs ${tx.amount.toLocaleString()}`).join('\n') +
+      `\nGenerated by Hissaby Buddy.`;
+    navigator.clipboard.writeText(text);
+    showSuccess('Settlement breakdown copied to clipboard!');
   };
 
   const handleExpenseModeChange = (mode: ExpenseMode) => {
@@ -209,7 +337,7 @@ export const TeamsGroupsView: React.FC = () => {
     if (currentWs?.id) saveExpenseMode(currentWs.id, mode);
   };
 
-  const handleInviteMember = () => {
+  const handleInviteByEmail = () => {
     if (!currentWs || !inviteEmail.trim()) return;
     const newInvite: PendingInvite = {
       id: `inv-${Date.now()}`, email: inviteEmail.trim().toLowerCase(),
@@ -231,46 +359,20 @@ export const TeamsGroupsView: React.FC = () => {
   const handleDeleteGroup = async () => {
     if (!currentWs || deleteConfirmText !== currentWs.name || isDeleting) return;
     setIsDeleting(true);
+    const targetWs = currentWs;
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      await fetch(`${apiUrl}/api/workspaces/${currentWs.id}`, {
-        method: 'DELETE',
-        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {},
-      }).catch(() => {});
-      // Remove from local state
-      setWorkspaces((prev) => prev.filter((w) => w.id !== currentWs.id));
-      const remaining = workspaces.filter((w) => w.id !== currentWs.id);
-      if (remaining.length > 0) setSelectedWsId(remaining[0].id);
+      await teamService.deleteWorkspace(targetWs.id, user?.token);
+      const remaining = workspaces.filter((w) => w.id !== targetWs.id);
+      setWorkspaces(remaining);
+      setSelectedWsId(remaining.length > 0 ? remaining[0].id : '');
       setIsSettingsModalOpen(false);
       setDeleteConfirmText('');
-      showSuccess(`Group "${currentWs.name}" deleted successfully.`);
-    } catch {
-      // If API fails, still remove locally
-      setWorkspaces((prev) => prev.filter((w) => w.id !== currentWs.id));
-    } finally { setIsDeleting(false); }
-  };
-
-  const handleQuickCreate = async (
-    name: string, theme: 'family' | 'project' | 'friends' | 'team', budgetAmt: number, desc: string
-  ) => {
-    if (isCreating) return;
-    setIsCreating(true);
-    try {
-      const created = await teamService.createWorkspace(
-        { name, theme, description: desc, currency: 'PKR', currency_symbol: 'Rs ' },
-        user?.token, { email: defaultUserEmail, displayName: 'You (Creator)' }
-      );
-      if (budgetAmt > 0) {
-        await teamService.createBudget(created.id, {
-          name: `${name} Initial Pool`, amount: budgetAmt, period: 'monthly', alert_threshold_percent: 80,
-        }, user?.token).catch(() => {});
-      }
-      await loadWorkspaces();
-      setSelectedWsId(created.id);
-      showSuccess(`Group "${name}" successfully created!`);
+      showSuccess(`Group "${targetWs.name}" deleted successfully.`);
     } catch (err: any) {
-      alert(err.message || 'Could not create template group. Please try again.');
-    } finally { setIsCreating(false); }
+      alert(err.message || 'Failed to delete group.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleCustomCreate = async (e: React.FormEvent) => {
@@ -299,50 +401,75 @@ export const TeamsGroupsView: React.FC = () => {
     } finally { setIsCreating(false); }
   };
 
-  const handleAddMember = async (e: React.FormEvent) => {
+  const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentWs || !newMemberForm.display_name.trim() || !newMemberForm.email.trim()) return;
-    await teamService.addMember(currentWs.id, {
-      display_name: newMemberForm.display_name.trim(), email: newMemberForm.email.trim(),
-      role: newMemberForm.role, custom_title: newMemberForm.custom_title.trim() || undefined,
-      spending_limit: newMemberForm.spending_limit ? parseFloat(newMemberForm.spending_limit) : undefined,
-    }, user?.token);
-    await loadWorkspaces();
-    setIsMemberModalOpen(false);
-    setNewMemberForm({ display_name: '', email: '', role: 'member', custom_title: '', spending_limit: '' });
+    if (!currentWs || !newMemberForm.email.trim()) return;
+    setIsAddingMember(true);
+    setMemberError(null);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await teamService.inviteMember(
+        currentWs.id,
+        newMemberForm.email.trim(),
+        newMemberForm.role || 'member',
+        user?.token
+      );
+      const invitedEmail = newMemberForm.email.trim();
+      setIsMemberModalOpen(false);
+      setNewMemberForm({ display_name: '', email: '', role: 'member', custom_title: '', spending_limit: '' });
+      showSuccess(`Invitation email successfully dispatched to ${invitedEmail}!`);
+    } catch (err: any) {
+      setMemberError(err.message || 'Failed to dispatch invitation. Please try again.');
+    } finally {
+      setIsAddingMember(false);
+    }
   };
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentWs || !newExpenseForm.amount || !newExpenseForm.description.trim()) return;
-    const amt = parseFloat(newExpenseForm.amount);
-    const payer = members.find((m) => m.user_id === newExpenseForm.payer_id || m.id === newExpenseForm.payer_id) || members[0];
-    await teamService.addSpending(currentWs.id, {
-      amount: amt, category: newExpenseForm.category, description: newExpenseForm.description.trim(),
-      payer_id: payer ? payer.user_id : 'usr_me', payer_name: payer ? payer.display_name : 'You',
-    }, user?.token);
-    clearDashboardCache();
-    await loadWorkspaces();
-    setIsExpenseModalOpen(false);
-    setNewExpenseForm({ amount: '', category: 'Groceries', description: '', payer_id: '' });
-    showSuccess('Expense logged and dashboard totals updated!');
+    if (!currentWs || !newExpenseForm.amount || !newExpenseForm.description.trim() || isAddingExpense) return;
+    setIsAddingExpense(true);
+    try {
+      const amt = parseFloat(newExpenseForm.amount);
+      const payer = members.find((m) => m.user_id === newExpenseForm.payer_id || m.id === newExpenseForm.payer_id) || members[0];
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await teamService.addSpending(currentWs.id, {
+        amount: amt, category: newExpenseForm.category, description: newExpenseForm.description.trim(),
+        payer_id: payer ? payer.user_id : 'usr_me', payer_name: payer ? payer.display_name : 'You',
+      }, user?.token);
+      clearDashboardCache();
+      await loadWorkspaces();
+      setIsExpenseModalOpen(false);
+      setNewExpenseForm({ amount: '', category: 'Groceries', description: '', payer_id: '' });
+      showSuccess('Expense logged and dashboard totals updated!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to log expense');
+    } finally {
+      setIsAddingExpense(false);
+    }
   };
 
-  const handleAddRecurring = (e: React.FormEvent) => {
+  const handleAddRecurring = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentWs || !newRecurringForm.description.trim() || !newRecurringForm.amount) return;
-    const item: RecurringGroupPayment = {
-      id: `rec-${Date.now()}`, workspace_id: currentWs.id,
-      description: newRecurringForm.description.trim(), amount: parseFloat(newRecurringForm.amount),
-      frequency: newRecurringForm.frequency, start_date: newRecurringForm.start_date,
-      category: newRecurringForm.category,
-    };
-    const updated = [...recurringItems, item];
-    setRecurringItems(updated);
-    saveRecurring(currentWs.id, updated);
-    setIsRecurringModalOpen(false);
-    setNewRecurringForm({ description: '', amount: '', frequency: 'monthly', start_date: new Date().toISOString().split('T')[0], category: 'Subscription' });
-    showSuccess(`Recurring "${item.description}" added!`);
+    if (!currentWs || !newRecurringForm.description.trim() || !newRecurringForm.amount || isAddingRecurring) return;
+    setIsAddingRecurring(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const item: RecurringGroupPayment = {
+        id: `rec-${Date.now()}`, workspace_id: currentWs.id,
+        description: newRecurringForm.description.trim(), amount: parseFloat(newRecurringForm.amount),
+        frequency: newRecurringForm.frequency, start_date: newRecurringForm.start_date,
+        category: newRecurringForm.category,
+      };
+      const updated = [...recurringItems, item];
+      setRecurringItems(updated);
+      saveRecurring(currentWs.id, updated);
+      setIsRecurringModalOpen(false);
+      setNewRecurringForm({ description: '', amount: '', frequency: 'monthly', start_date: new Date().toISOString().split('T')[0], category: 'Subscription' });
+      showSuccess(`Recurring "${item.description}" added!`);
+    } finally {
+      setIsAddingRecurring(false);
+    }
   };
 
   const handleDeleteRecurring = (id: string) => {
@@ -371,7 +498,7 @@ export const TeamsGroupsView: React.FC = () => {
   // ─── Zero State ─────────────────────────────────────────────────────────────
   if (!currentWs || workspaces.length === 0) {
     return (
-      <div className="space-y-8 pb-16 w-full max-w-5xl mx-auto animate-fadeIn">
+      <div className="space-y-8 pb-16 w-full animate-fadeIn">
         {actionSuccessMsg && (
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /><span>{actionSuccessMsg}</span></div>
@@ -385,9 +512,9 @@ export const TeamsGroupsView: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
           {[
-            { name: 'Family Groceries & Rashan', theme: 'family' as const, budget: 60000, desc: 'Monthly household ration, milk, and utility bills.', Icon: ShoppingBag, color: 'emerald', label: '+ Use Family Template' },
-            { name: 'Client Project Team', theme: 'project' as const, budget: 100000, desc: 'Shared project expenses, domain renewals, and cloud bills.', Icon: Briefcase, color: 'blue', label: '+ Use Project Template' },
-            { name: 'Flat Roommates', theme: 'friends' as const, budget: 45000, desc: 'Shared apartment rent, WiFi internet, and flat maintenance.', Icon: Home, color: 'purple', label: '+ Use Flatmates Template' },
+            { name: 'Family Groceries & Rashan', theme: 'family' as const, budget: 60000, desc: 'Monthly household ration, milk, and utility bills.', Icon: ShoppingBag, color: 'emerald', label: 'Use Family Template →' },
+            { name: 'Client Project Team', theme: 'project' as const, budget: 100000, desc: 'Shared project expenses, domain renewals, and cloud bills.', Icon: Briefcase, color: 'blue', label: 'Use Project Template →' },
+            { name: 'Flat Roommates', theme: 'friends' as const, budget: 45000, desc: 'Shared apartment rent, WiFi internet, and flat maintenance.', Icon: Home, color: 'purple', label: 'Use Flatmates Template →' },
           ].map((t) => (
             <div key={t.name} className={`p-6 rounded-3xl bg-white border border-slate-200 shadow-xs hover:border-[#5391FE] hover:shadow-md transition-all flex flex-col justify-between space-y-4`}>
               <div className="space-y-3">
@@ -396,17 +523,17 @@ export const TeamsGroupsView: React.FC = () => {
                 <p className="text-xs text-slate-500 leading-relaxed">{t.desc}</p>
                 <div className="pt-2 text-xs font-bold text-slate-700">Suggested Pool: <span className={`text-${t.color}-600`}>Rs {(t.budget / 1000).toFixed(0)}k{t.budget >= 60000 ? '/mo' : ''}</span></div>
               </div>
-              <button disabled={isCreating} onClick={() => handleQuickCreate(t.name, t.theme, t.budget, t.desc)}
-                className={`w-full py-2.5 rounded-xl bg-${t.color}-50 hover:bg-${t.color}-100 disabled:opacity-50 text-${t.color}-700 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2`}>
-                {isCreating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t.label}
+              <button onClick={() => navigate(`/dashboard/teams/create?theme=${t.theme}&budget=${t.budget}&name=${encodeURIComponent(t.name)}`)}
+                className={`w-full py-2.5 rounded-xl bg-${t.color}-50 hover:bg-${t.color}-100 text-${t.color}-700 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2`}>
+                <span>{t.label}</span>
               </button>
             </div>
           ))}
         </div>
         <div className="text-center pt-4">
-          <button onClick={() => setIsCreateModalOpen(true)}
+          <button onClick={() => navigate('/dashboard/teams/create')}
             className="px-6 py-3 rounded-2xl bg-[#012456] hover:bg-[#02337a] text-white text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-2">
-            <Plus className="w-4 h-4" /><span>Create Custom Group with Custom Settings</span>
+            <Plus className="w-4 h-4" /><span>Create Collaborative Group (Complete Setup Page)</span>
           </button>
         </div>
         {renderCreateModal()}
@@ -480,7 +607,7 @@ export const TeamsGroupsView: React.FC = () => {
               <span className="hidden sm:block">Settings</span>
             </button>
           )}
-          <button onClick={() => setIsCreateModalOpen(true)} title="Create another group"
+          <button onClick={() => navigate('/dashboard/teams/create')} title="Create new group with full configuration"
             className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:text-[#012456] hover:bg-slate-50 transition-colors cursor-pointer">
             <Plus className="w-4 h-4" />
           </button>
@@ -570,8 +697,23 @@ export const TeamsGroupsView: React.FC = () => {
 
       {/* ── TAB 1: Overview ───────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
-          <h4 className="text-sm font-black text-[#012456]">Member Ledger</h4>
+        <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+            <div>
+              <h4 className="text-sm font-black text-[#012456]">Member Ledger &amp; Balances</h4>
+              <p className="text-[11px] text-slate-400">Track total spending, fair shares, and outstanding payments.</p>
+            </div>
+            {settlementTransactions.length > 0 && expenseMode !== 'single_payer' && (
+              <button
+                onClick={() => setIsNotifyModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-[#012456] hover:bg-[#02337a] text-white text-xs font-black shadow-xs transition-all flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <Bell className="w-3.5 h-3.5 text-[#5391FE] animate-pulse" />
+                <span>Notify Members ({settlementTransactions.length})</span>
+              </button>
+            )}
+          </div>
+
           {expenseMode === 'single_payer' && (
             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
               <Crown className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
@@ -581,6 +723,7 @@ export const TeamsGroupsView: React.FC = () => {
               </div>
             </div>
           )}
+
           <div className="space-y-2.5">
             {splitSummary.memberPaidMap.map((item) => (
               <div key={item.member.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-3">
@@ -610,6 +753,55 @@ export const TeamsGroupsView: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {/* ── Settlement Directions (Who Pays Whom) ────────────────────────── */}
+          {settlementTransactions.length > 0 && expenseMode !== 'single_payer' && (
+            <div className="p-5 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-3 mt-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-[#5391FE] text-white flex items-center justify-center">
+                    <Send className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-[#012456]">Payment Directions (Who Pays Whom)</h5>
+                    <p className="text-[10px] text-slate-500">Minimal required transfers to settle all shared dues</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsNotifyModalOpen(true)}
+                  className="text-xs font-black text-[#5391FE] hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <span>Open Notify Modal</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                {settlementTransactions.map((tx) => (
+                  <div key={tx.id} className="p-3 bg-white rounded-xl border border-blue-100/80 flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <span className="text-rose-700 font-black truncate">{tx.fromMemberName}</span>
+                        <span className="text-slate-400 font-normal">pays</span>
+                        <span className="text-emerald-700 font-black truncate">{tx.toMemberName}</span>
+                      </div>
+                      <span className="text-sm font-black text-[#012456] block mt-0.5">
+                        {formatAmount(tx.amount, false, 'Rs ')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleShareWhatsApp(tx)}
+                      title="Remind on WhatsApp"
+                      className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">WhatsApp</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -747,6 +939,7 @@ export const TeamsGroupsView: React.FC = () => {
       {renderExpenseModal()}
       {renderRecurringModal()}
       {renderSettingsModal()}
+      {renderNotifyModal()}
     </div>
   );
 
@@ -803,27 +996,173 @@ export const TeamsGroupsView: React.FC = () => {
     );
   }
 
+  function renderNotifyModal() {
+    if (!isNotifyModalOpen || !currentWs) return null;
+    return (
+      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 border border-slate-100 max-h-[90vh] overflow-y-auto animate-fadeIn">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#5391FE] flex items-center justify-center">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-[#012456]">Notify Members &amp; Settle Dues</h3>
+                <p className="text-[11px] text-slate-400">Send direct payment shares and breakdown to all group participants.</p>
+              </div>
+            </div>
+            <button onClick={() => setIsNotifyModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Group Overview Quick Stats */}
+          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
+            <div>
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Total Group Spending</span>
+              <span className="text-sm font-black text-[#012456] block mt-0.5">{formatAmount(totalSpent, false, 'Rs ')}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 block font-bold uppercase">Pending Settlements</span>
+              <span className="text-sm font-black text-rose-600 block mt-0.5">{settlementTransactions.length} Transaction(s)</span>
+            </div>
+          </div>
+
+          {/* Settlement Transactions List */}
+          <div className="space-y-2">
+            <span className="text-xs font-black text-slate-700 block">Required Payments (Who Pays Whom)</span>
+            {settlementTransactions.length === 0 ? (
+              <div className="p-6 text-center rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-400">
+                All balances are currently settled up! No payments required.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {settlementTransactions.map((tx) => (
+                  <div key={tx.id} className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <span className="text-rose-700 font-black truncate">{tx.fromMemberName}</span>
+                        <span className="text-slate-400 font-normal">owes</span>
+                        <span className="text-emerald-700 font-black truncate">{tx.toMemberName}</span>
+                      </div>
+                      <span className="text-sm font-black text-[#012456] block mt-0.5">
+                        {formatAmount(tx.amount, false, 'Rs ')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleShareWhatsApp(tx)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>WhatsApp</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2.5 pt-2 border-t border-slate-100">
+            <button
+              disabled={isSendingNotifications || settlementTransactions.length === 0}
+              onClick={handleSendSettlementEmails}
+              className="w-full py-2.5 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-black shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isSendingNotifications ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Dispatching Email Notifications...</span>
+                </>
+              ) : (
+                <>
+                  <Mail className="w-4 h-4" />
+                  <span>Send Email Notifications to All Debtors</span>
+                </>
+              )}
+            </button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleShareWhatsApp()}
+                className="py-2.5 rounded-xl border border-emerald-300 bg-emerald-50/50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Share WhatsApp Summary</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                <span>Copy Summary</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderMemberModal() {
     if (!isMemberModalOpen || !currentWs) return null;
     return (
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-fadeIn">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-base font-black text-[#012456]">Add Member to {currentWs.name}</h3>
-            <button onClick={() => setIsMemberModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer"><X className="w-5 h-5" /></button>
+            <div>
+              <h3 className="text-base font-black text-[#012456]">Invite Member to {currentWs.name}</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">We will send an email invitation with a direct link to join this workspace.</p>
+            </div>
+            <button onClick={() => setIsMemberModalOpen(false)} disabled={isAddingMember} className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"><X className="w-5 h-5" /></button>
           </div>
-          <form onSubmit={handleAddMember} className="space-y-3.5">
-            <div><label className="block text-xs font-bold text-slate-700 mb-1">Name</label>
-              <input type="text" required value={newMemberForm.display_name} onChange={(e) => setNewMemberForm({ ...newMemberForm, display_name: e.target.value })} placeholder="e.g. Sarah Ahmad" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
-            <div><label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
-              <input type="email" required value={newMemberForm.email} onChange={(e) => setNewMemberForm({ ...newMemberForm, email: e.target.value })} placeholder="sarah@example.com" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
-            <div><label className="block text-xs font-bold text-slate-700 mb-1">Role</label>
-              <select value={newMemberForm.role} onChange={(e) => setNewMemberForm({ ...newMemberForm, role: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer">
-                <option value="member">Member</option><option value="admin">Admin</option><option value="owner">Owner</option>
-              </select></div>
+          {memberError && (
+            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold animate-fadeIn">
+              {memberError}
+            </div>
+          )}
+          <form onSubmit={handleInviteMember} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Invitee Email Address</label>
+              <input
+                type="email"
+                required
+                disabled={isAddingMember}
+                value={newMemberForm.email}
+                onChange={(e) => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
+                placeholder="colleague@example.com, friend@hissaby.pk"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60 focus:outline-none focus:border-[#5391FE]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Role</label>
+              <select
+                disabled={isAddingMember}
+                value={newMemberForm.role}
+                onChange={(e) => setNewMemberForm({ ...newMemberForm, role: e.target.value as any })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer disabled:opacity-60"
+              >
+                <option value="member">Member (Can log expenses &amp; leave)</option>
+                <option value="admin">Admin (Can manage settings &amp; delete)</option>
+              </select>
+            </div>
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setIsMemberModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Cancel</button>
-              <button type="submit" className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold shadow-xs cursor-pointer">Add Member</button>
+              <button type="button" disabled={isAddingMember} onClick={() => setIsMemberModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isAddingMember} className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-[#5391FE]/60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer">
+                {isAddingMember ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Sending Invite...</span>
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Send Invitation</span>
+                  </>
+                )}
+              </button>
             </div>
           </form>
         </div>
@@ -835,10 +1174,10 @@ export const TeamsGroupsView: React.FC = () => {
     if (!isExpenseModalOpen || !currentWs) return null;
     return (
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-fadeIn">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <h3 className="text-base font-black text-[#012456]">Log Shared Expense</h3>
-            <button onClick={() => setIsExpenseModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer"><X className="w-5 h-5" /></button>
+            <button onClick={() => setIsExpenseModalOpen(false)} disabled={isAddingExpense} className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"><X className="w-5 h-5" /></button>
           </div>
           {expenseMode === 'single_payer' && (
             <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-700 flex items-center gap-1.5">
@@ -847,22 +1186,31 @@ export const TeamsGroupsView: React.FC = () => {
           )}
           <form onSubmit={handleAddExpense} className="space-y-3.5">
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Amount (PKR)</label>
-              <input type="number" required value={newExpenseForm.amount} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, amount: e.target.value })} placeholder="e.g. 8500" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
+              <input type="number" required disabled={isAddingExpense} value={newExpenseForm.amount} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, amount: e.target.value })} placeholder="e.g. 8500" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60" /></div>
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
-              <input type="text" required value={newExpenseForm.description} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, description: e.target.value })} placeholder="e.g. Metro Supermarket Monthly Ration" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
+              <input type="text" required disabled={isAddingExpense} value={newExpenseForm.description} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, description: e.target.value })} placeholder="e.g. Metro Supermarket Monthly Ration" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60" /></div>
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
-              <select value={newExpenseForm.category} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, category: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer">
+              <select disabled={isAddingExpense} value={newExpenseForm.category} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, category: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer disabled:opacity-60">
                 <option value="Groceries">Groceries &amp; Rashan</option><option value="Utilities">Utilities &amp; Bills</option>
                 <option value="Rent">Rent &amp; Accommodation</option><option value="Software">Software &amp; Tools</option>
                 <option value="Dining">Dining Out</option><option value="General">General Expense</option>
               </select></div>
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Who Paid?</label>
-              <select value={newExpenseForm.payer_id} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, payer_id: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer">
+              <select disabled={isAddingExpense} value={newExpenseForm.payer_id} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, payer_id: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer disabled:opacity-60">
                 {members.length > 0 ? members.map((m) => <option key={m.id} value={m.user_id || m.id}>{m.display_name || m.email}</option>) : <option value="usr_me">You (Owner)</option>}
               </select></div>
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Cancel</button>
-              <button type="submit" className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold shadow-xs cursor-pointer">Add Expense</button>
+              <button type="button" disabled={isAddingExpense} onClick={() => setIsExpenseModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isAddingExpense} className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-[#5391FE]/60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer">
+                {isAddingExpense ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Logging Expense...</span>
+                  </>
+                ) : (
+                  <span>Add Expense</span>
+                )}
+              </button>
             </div>
           </form>
         </div>
@@ -874,33 +1222,43 @@ export const TeamsGroupsView: React.FC = () => {
     if (!isRecurringModalOpen || !currentWs) return null;
     return (
       <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
+        <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-fadeIn">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div><h3 className="text-base font-black text-[#012456]">Add Recurring Payment</h3><p className="text-[11px] text-slate-400 mt-0.5">Netflix, hosting, rent, subscriptions — any fixed group cost.</p></div>
-            <button onClick={() => setIsRecurringModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer"><X className="w-5 h-5" /></button>
+            <button onClick={() => setIsRecurringModalOpen(false)} disabled={isAddingRecurring} className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"><X className="w-5 h-5" /></button>
           </div>
           <form onSubmit={handleAddRecurring} className="space-y-3.5">
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
-              <input type="text" required value={newRecurringForm.description} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, description: e.target.value })} placeholder="e.g. Netflix Premium Plan" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
+              <input type="text" required disabled={isAddingRecurring} value={newRecurringForm.description} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, description: e.target.value })} placeholder="e.g. Netflix Premium Plan" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60" /></div>
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Amount (PKR)</label>
-              <input type="number" required value={newRecurringForm.amount} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, amount: e.target.value })} placeholder="e.g. 1500" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
+              <input type="number" required disabled={isAddingRecurring} value={newRecurringForm.amount} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, amount: e.target.value })} placeholder="e.g. 1500" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
-                <select value={newRecurringForm.frequency} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, frequency: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer">
+                <select disabled={isAddingRecurring} value={newRecurringForm.frequency} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, frequency: e.target.value as any })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer disabled:opacity-60">
                   <option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="quarterly">Quarterly</option>
                 </select></div>
               <div><label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
-                <select value={newRecurringForm.category} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, category: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer">
+                <select disabled={isAddingRecurring} value={newRecurringForm.category} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, category: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 cursor-pointer disabled:opacity-60">
                   <option value="Subscription">Subscription</option><option value="Rent">Rent &amp; Housing</option>
                   <option value="Utilities">Utilities &amp; Bills</option><option value="Software">Software &amp; Tools</option><option value="General">General</option>
                 </select></div>
             </div>
             <div><label className="block text-xs font-bold text-slate-700 mb-1">Start Date</label>
-              <input type="date" required value={newRecurringForm.start_date} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, start_date: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900" /></div>
+              <input type="date" required disabled={isAddingRecurring} value={newRecurringForm.start_date} onChange={(e) => setNewRecurringForm({ ...newRecurringForm, start_date: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 disabled:opacity-60" /></div>
             <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setIsRecurringModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Cancel</button>
-              <button type="submit" className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center justify-center gap-1.5">
-                <Repeat className="w-3.5 h-3.5" /> Add Recurring
+              <button type="button" disabled={isAddingRecurring} onClick={() => setIsRecurringModalOpen(false)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isAddingRecurring} className="flex-1 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-[#5391FE]/60 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                {isAddingRecurring ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Adding Recurring...</span>
+                  </>
+                ) : (
+                  <>
+                    <Repeat className="w-3.5 h-3.5" />
+                    <span>Add Recurring</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -1125,10 +1483,10 @@ export const TeamsGroupsView: React.FC = () => {
                     </p>
                     <div className="flex gap-2">
                       <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInviteMember(); } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInviteByEmail(); } }}
                         placeholder="colleague@example.com"
                         className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20 transition-all" />
-                      <button onClick={handleInviteMember} disabled={!inviteEmail.trim()}
+                      <button onClick={handleInviteByEmail} disabled={!inviteEmail.trim()}
                         className="px-4 py-2.5 rounded-xl bg-[#5391FE] disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold cursor-pointer hover:bg-[#437de0] disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0">
                         <Mail className="w-3.5 h-3.5" /> Send Invite
                       </button>

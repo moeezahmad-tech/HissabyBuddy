@@ -34,6 +34,16 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+
+  // Auto-fill email if present in query parameters
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const emailParam = searchParams.get('email');
+    if (emailParam && !email) {
+      setEmail(emailParam);
+    }
+  }, [location.search]);
 
   // If already logged in, redirect to dashboard or process invite token
   useEffect(() => {
@@ -41,6 +51,7 @@ export const LoginPage: React.FC = () => {
       const searchParams = new URLSearchParams(location.search);
       const inviteToken = searchParams.get('invite');
       if (inviteToken) {
+        setInviteStatus('Joining group...');
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
         fetch(`${apiUrl}/api/workspaces/invitations/${inviteToken}/accept`, {
           method: 'POST',
@@ -50,13 +61,11 @@ export const LoginPage: React.FC = () => {
           }
         })
           .then(res => res.json())
-          .then(data => {
-            if (data.status === 'success') {
+          .then((data: any) => {
+            if (data?.status === 'success') {
               localStorage.removeItem('hissaby_cached_workspaces');
-              navigate(`/dashboard/teams`, { replace: true });
-            } else {
-              navigate('/dashboard/teams', { replace: true });
             }
+            navigate(`/dashboard/teams`, { replace: true });
           })
           .catch(() => {
             navigate('/dashboard/teams', { replace: true });
@@ -102,12 +111,36 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const searchParams = new URLSearchParams(location.search);
+  const isInviteFlow = Boolean(searchParams.get('invite'));
+
+  if (authLoading || inviteStatus) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#5391FE] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-bold text-[#012456]">
+            {inviteStatus || 'Authenticating...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const isLoading = authLoading || submitting;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Official Website Navigation Bar */}
       <HeaderNav />
+
+      {isInviteFlow && (
+        <div className="bg-blue-50 border-b border-blue-100 py-3 px-4 text-center">
+          <p className="text-xs font-bold text-[#012456]">
+            👥 Group Invitation: Sign in or create an account to automatically join the shared group.
+          </p>
+        </div>
+      )}
 
       <div className="flex-grow flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
         {/* Background ambient accents */}

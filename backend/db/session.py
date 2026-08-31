@@ -7,14 +7,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 logger = logging.getLogger("hissaby.db")
 
 # Use DIRECT_URL for migrations/DDL, DATABASE_URL for pooled app queries
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://neondb_owner:npg_Zs6agJSh2DWO@ep-rough-star-ae57komt-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-)
-DIRECT_URL = os.getenv(
-    "DIRECT_URL",
-    "postgresql://neondb_owner:npg_Zs6agJSh2DWO@ep-rough-star-ae57komt.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+DIRECT_URL = os.getenv("DIRECT_URL", "")
 
 # Standardize URL prefix for SQLAlchemy if needed
 def clean_url(url: str) -> str:

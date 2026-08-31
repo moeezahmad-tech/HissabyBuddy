@@ -36,6 +36,7 @@ export const NotificationPopover: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [joiningToken, setJoiningToken] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
@@ -65,7 +66,7 @@ export const NotificationPopover: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 20000);
+    const interval = setInterval(fetchNotifications, 6000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -101,8 +102,10 @@ export const NotificationPopover: React.FC = () => {
     setUnreadCount(0);
   };
 
-  const acceptInvite = async (token: string, e: React.MouseEvent) => {
+  const acceptInvite = async (token: string, notifId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (joiningToken) return;
+    setJoiningToken(token);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/api/workspaces/invitations/${token}/accept`, {
@@ -115,14 +118,16 @@ export const NotificationPopover: React.FC = () => {
       const data = await response.json();
       if (data.status === 'success') {
         localStorage.removeItem('hissaby_cached_workspaces');
-        alert('Successfully joined the group!');
-        fetchNotifications();
-        window.location.reload();
+        markSingleAsRead(notifId);
+        setIsOpen(false);
+        window.location.href = '/dashboard/teams';
       } else {
-        alert(data.error || 'Failed to accept invitation.');
+        alert(data.detail || data.error || 'Failed to accept invitation.');
       }
-    } catch {
-      alert('Failed to accept invitation.');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to accept invitation.');
+    } finally {
+      setJoiningToken(null);
     }
   };
 
@@ -130,7 +135,11 @@ export const NotificationPopover: React.FC = () => {
     <div className="relative font-sans" ref={popoverRef}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (next) fetchNotifications();
+        }}
         aria-label="Notifications"
         className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 hover:border-[#5391FE] text-slate-500 hover:text-[#5391FE] flex items-center justify-center transition-colors relative cursor-pointer"
         title="View Notifications"
@@ -236,11 +245,23 @@ export const NotificationPopover: React.FC = () => {
                             {n.type === 'invite' && n.token && (
                               <button
                                 type="button"
-                                onClick={(e) => acceptInvite(n.token!, e)}
-                                className="text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 px-2 py-0.5 rounded-lg flex items-center transition-all cursor-pointer shadow-2xs"
+                                disabled={Boolean(joiningToken)}
+                                onClick={(e) => acceptInvite(n.token!, n.id, e)}
+                                className={`text-[10px] font-bold text-white px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all shadow-2xs ${
+                                  joiningToken === n.token
+                                    ? 'bg-purple-400 cursor-wait'
+                                    : 'bg-purple-600 hover:bg-purple-700 cursor-pointer'
+                                }`}
                                 title="Accept invitation and join group"
                               >
-                                Join Group
+                                {joiningToken === n.token ? (
+                                  <>
+                                    <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    <span>Joining...</span>
+                                  </>
+                                ) : (
+                                  <span>Join Group</span>
+                                )}
                               </button>
                             )}
                             <button

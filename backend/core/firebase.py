@@ -72,7 +72,7 @@ def verify_firebase_token(id_token: str) -> Optional[Dict[str, Any]]:
     
     # 1. Try verify_id_token with 300 seconds clock skew tolerance
     try:
-        decoded_token = auth.verify_id_token(id_token, clock_skew_seconds=300)
+        decoded_token = auth.verify_id_token(id_token, clock_skew_seconds=60)
         return decoded_token
     except Exception as e:
         logger.warning(f"verify_id_token error (attempting resilient claim extraction): {e}")

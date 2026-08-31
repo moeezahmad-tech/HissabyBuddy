@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 import json
+from datetime import datetime
 from core.security import get_current_user
 from core.config import settings
 from services.storage_service import storage_service
+from services.email_service import EmailService
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -13,6 +15,49 @@ class ProfileUpdate(BaseModel):
     email: Optional[str] = None
     about: Optional[str] = ""
     dark_mode: Optional[bool] = True
+
+class AuthNotifyRequest(BaseModel):
+    event_type: str = "login" # "login" or "signup"
+    device_info: Optional[str] = "Web Application"
+    client_time: Optional[str] = None
+
+@router.post("/notify-login")
+async def notify_auth_event(
+    payload: AuthNotifyRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Dispatches automated transactional emails in the background upon login or new signup.
+    """
+    to_email = user.get("email")
+    if not to_email or "@hissaby.local" in to_email:
+        return {"status": "skipped", "message": "No valid external email found for user"}
+
+    user_name = user.get("name") or user.get("display_name") or to_email.split("@")[0] or "Valued User"
+    client_ip = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "Current Session")
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+
+    if payload.event_type.lower() == "signup":
+        background_tasks.add_task(
+            EmailService.send_welcome_email,
+            to_email=to_email,
+            user_name=user_name
+        )
+    else:
+        login_time_str = payload.client_time or datetime.now().strftime("%B %d, %Y at %I:%M %p (PKT)")
+        background_tasks.add_task(
+            EmailService.send_login_notification,
+            to_email=to_email,
+            user_name=user_name,
+            login_time=login_time_str,
+            ip_address=client_ip,
+            device=payload.device_info or "Web Application"
+        )
+
+    return {"status": "success", "event": payload.event_type, "dispatched": True}
 
 @router.get("/me")
 async def get_current_user_profile(user: Dict[str, Any] = Depends(get_current_user)):
