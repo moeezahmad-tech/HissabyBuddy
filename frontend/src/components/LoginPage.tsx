@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Lock,
   Mail,
   User,
-  ArrowLeft,
   ShieldCheck,
   CheckCircle2,
   Sparkles,

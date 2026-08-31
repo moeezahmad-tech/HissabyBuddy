@@ -10,7 +10,7 @@ interface HeaderNavProps {
 
 export const HeaderNav: React.FC<HeaderNavProps> = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, openAuthModal, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
 
   const isLoginPage = location.pathname.includes('/login');

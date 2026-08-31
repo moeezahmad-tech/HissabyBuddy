@@ -73,6 +73,10 @@ export interface Workspace {
   budgets?: WorkspaceBudget[];
   spendings?: TeamSpending[];
   created_at?: string;
+  theme_settings?: {
+    is_temporary?: boolean;
+    [key: string]: any;
+  };
 }
 
 // Local storage key for offline caching

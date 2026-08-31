@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Crown, Settings2, Users, Wallet, ShieldAlert, Info,
-  SplitSquareVertical, PieChart, Check, Mail, Trash2, LogOut,
+  ArrowLeft, Crown,
+  SplitSquareVertical, PieChart, Check, Mail,
   RefreshCw, X, AlertCircle, CheckCircle2, ShoppingBag, Briefcase, Home, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -32,13 +32,6 @@ function loadExpenseMode(wsId: string): ExpenseMode {
 }
 function saveExpenseMode(wsId: string, mode: ExpenseMode) {
   localStorage.setItem(`hissaby_expense_mode_${wsId}`, mode);
-}
-function loadInvites(wsId: string): PendingInvite[] {
-  try { const raw = localStorage.getItem(INVITES_KEY(wsId)); return raw ? JSON.parse(raw) : []; }
-  catch { return []; }
-}
-function saveInvites(wsId: string, items: PendingInvite[]) {
-  localStorage.setItem(INVITES_KEY(wsId), JSON.stringify(items));
 }
 
 function getThemeBadge(theme?: string) {
@@ -132,7 +125,6 @@ export const GroupSettingsPage: React.FC = () => {
 
   const totalBudget = currentWs?.total_budget || 0;
   const totalSpent = (currentWs?.spendings || []).reduce((acc, s) => acc + s.amount, 0);
-  const remaining = totalBudget - totalSpent;
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);

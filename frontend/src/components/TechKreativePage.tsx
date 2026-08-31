@@ -1,7 +1,7 @@
 import React from 'react';
 import HeaderNav from './HeaderNav';
 import Footer from './Footer';
-import { ExternalLink, Terminal, Globe, Award, Sparkles } from 'lucide-react';
+import { ExternalLink, Terminal, Globe, Sparkles } from 'lucide-react';
 
 export const TechKreativePage: React.FC = () => {
   return (

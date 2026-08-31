@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, User, CheckCircle2, LogIn, LogOut, RefreshCw, Sun, Moon, Info, Settings2 } from 'lucide-react';
+import { ShieldCheck, User, CheckCircle2, LogOut, RefreshCw, Sun, Moon, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const SettingsView: React.FC = () => {
@@ -11,7 +11,6 @@ export const SettingsView: React.FC = () => {
   const [about, setAbout] = useState('');
   const [darkMode, setDarkMode] = useState(true);
   
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
