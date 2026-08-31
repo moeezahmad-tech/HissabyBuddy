@@ -106,21 +106,27 @@ export const GroupSettingsPage: React.FC = () => {
     }
   }, [currentWs, user]);
 
+  const isOwner = useMemo(() => {
+    const rawMembers = currentWs?.members || [];
+    const ownerMember = rawMembers.find((m) => m.role === 'owner');
+    if (!ownerMember) return true;
+    return ownerMember.user_id === user?.uid || ownerMember.email === user?.email;
+  }, [currentWs?.members, user]);
+
   const members = useMemo(() => {
     const raw = currentWs?.members || [];
-    if (raw.length > 0) return raw.map((m) => ({
-      ...m,
-      display_name: m.role === 'owner' ? 'You (Creator)' : (m.display_name || 'Member'),
-      email: (m.email && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail,
-    }));
+    if (raw.length > 0) return raw.map((m) => {
+      const isMe = m.user_id === user?.uid || (m.role === 'owner' && isOwner);
+      return {
+        ...m,
+        display_name: m.role === 'owner' ? 'You (Creator)' : (m.display_name || 'Member'),
+        email: isMe && user?.email && !user.email.includes('@hissaby.local')
+          ? user.email
+          : ((m.email && m.email !== 'you@hissaby.pk' && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail),
+      };
+    });
     return [{ id: 'm-me', workspace_id: wsId, user_id: user?.uid || 'usr_me', role: 'owner' as const, display_name: 'You (Creator)', email: defaultUserEmail, custom_title: 'You (Creator)', total_spent: 0 }];
-  }, [currentWs?.members, wsId, user, defaultUserEmail]);
-
-  const isOwner = useMemo(() => {
-    const ownerMember = members.find((m) => m.role === 'owner');
-    if (!ownerMember) return true;
-    return ownerMember.email === defaultUserEmail || ownerMember.user_id === user?.uid;
-  }, [members, defaultUserEmail, user]);
+  }, [currentWs?.members, wsId, user, defaultUserEmail, isOwner]);
 
 
   const showSuccess = (msg: string) => {
