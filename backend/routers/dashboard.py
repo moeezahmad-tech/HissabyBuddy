@@ -368,10 +368,40 @@ async def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user
     user_txs = user_transaction_store.get(uid, [])
     curr = user_preferred_currency.get(uid, "PKR")
     sym = user_preferred_symbol.get(uid, "Rs ")
+    user_email = user.get("email")
 
     notifications = []
     
-    # 1. Recent Invoices/Statements
+    # 1. Fetch pending workspace invitations from Neon database
+    if user_email and "@hissaby.local" not in user_email:
+        conn = storage_service.get_conn()
+        try:
+            from psycopg2.extras import RealDictCursor
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT i.invite_token, i.invited_email, w.name as workspace_name, u.display_name as inviter_name
+                    FROM workspace_invitations i
+                    JOIN workspaces w ON i.workspace_id = w.id
+                    LEFT JOIN users u ON i.invited_by = u.id
+                    WHERE i.invited_email = %s AND i.status = 'pending';
+                """, (user_email.strip().lower(),))
+                rows = cur.fetchall()
+                for row in rows:
+                    notifications.append({
+                        "id": f"notif-invite-{row['invite_token']}",
+                        "title": "Group Invitation Received 👥",
+                        "message": f"{row['inviter_name'] or 'A Friend'} has invited you to join the shared group '{row['workspace_name']}'.",
+                        "time": "Pending Action",
+                        "unread": True,
+                        "type": "invite",
+                        "token": row['invite_token']
+                    })
+        except Exception as db_err:
+            logger.error(f"Failed to fetch invite notifications: {db_err}")
+        finally:
+            storage_service.put_conn(conn)
+
+    # 2. Recent Invoices/Statements
     for tx in user_txs[:3]:
         notifications.append({
             "id": f"notif-{tx.get('id')}",
@@ -382,7 +412,7 @@ async def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user
             "type": "transaction"
         })
 
-    # 2. Default System Advisories
+    # 3. Default System Advisories
     notifications.extend([
         {
             "id": "notif-system-1",

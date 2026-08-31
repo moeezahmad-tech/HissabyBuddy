@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, CheckCheck, Sparkles, Receipt, Coins } from 'lucide-react';
+import { Bell, Check, CheckCheck, Sparkles, Receipt, Coins, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface NotificationItem {
@@ -8,7 +8,8 @@ interface NotificationItem {
   message: string;
   time: string;
   unread: boolean;
-  type?: 'transaction' | 'system' | 'currency';
+  type?: 'transaction' | 'system' | 'currency' | 'invite';
+  token?: string;
 }
 
 const READ_STORAGE_KEY = 'hissaby_read_notifications_v1';
@@ -100,6 +101,31 @@ export const NotificationPopover: React.FC = () => {
     setUnreadCount(0);
   };
 
+  const acceptInvite = async (token: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/workspaces/invitations/${token}/accept`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
+        },
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        localStorage.removeItem('hissaby_cached_workspaces');
+        alert('Successfully joined the group!');
+        fetchNotifications();
+        window.location.reload();
+      } else {
+        alert(data.error || 'Failed to accept invitation.');
+      }
+    } catch {
+      alert('Failed to accept invitation.');
+    }
+  };
+
   return (
     <div className="relative font-sans" ref={popoverRef}>
       <button
@@ -171,12 +197,16 @@ export const NotificationPopover: React.FC = () => {
                         ? 'bg-emerald-50 text-emerald-600'
                         : n.type === 'currency'
                         ? 'bg-amber-50 text-amber-600'
+                        : n.type === 'invite'
+                        ? 'bg-purple-50 text-purple-600'
                         : 'bg-blue-50 text-[#5391FE]'
                     }`}>
                       {n.type === 'transaction' ? (
                         <Receipt className="w-4 h-4" />
                       ) : n.type === 'currency' ? (
                         <Coins className="w-4 h-4" />
+                      ) : n.type === 'invite' ? (
+                        <UserPlus className="w-4 h-4" />
                       ) : (
                         <Sparkles className="w-4 h-4" />
                       )}
@@ -202,19 +232,31 @@ export const NotificationPopover: React.FC = () => {
                         </span>
 
                         {n.unread ? (
-                          <button
-                            type="button"
-                            onClick={(e) => markSingleAsRead(n.id, e)}
-                            className="text-[10px] font-bold text-[#5391FE] hover:text-[#437de0] bg-white hover:bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
-                            title="Mark this notification as read"
-                          >
-                            <Check className="w-3 h-3" />
-                            <span>Mark as read</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {n.type === 'invite' && n.token && (
+                              <button
+                                type="button"
+                                onClick={(e) => acceptInvite(n.token!, e)}
+                                className="text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 px-2 py-0.5 rounded-lg flex items-center transition-all cursor-pointer shadow-2xs"
+                                title="Accept invitation and join group"
+                              >
+                                Join Group
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => markSingleAsRead(n.id, e)}
+                              className="text-[10px] font-bold text-[#5391FE] hover:text-[#437de0] bg-white hover:bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              title="Mark this notification as read"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>{n.type === 'invite' ? 'Ignore' : 'Mark as read'}</span>
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
                             <CheckCheck className="w-3 h-3 text-emerald-500" />
-                            <span>Read</span>
+                            <span>{n.type === 'invite' ? 'Accepted / Ignored' : 'Read'}</span>
                           </span>
                         )}
                       </div>

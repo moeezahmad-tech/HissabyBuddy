@@ -463,8 +463,8 @@ export const TeamsGroupsView: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer">
             <UserPlus className="w-3.5 h-3.5 text-slate-500" /><span>Add Member</span>
           </button>
-          {/* Settings — Owner Only → navigates to full Settings page */}
-          {isOwner && (
+          {/* Settings → navigates to full Settings page */}
+          {currentWs && (
             <button
               onClick={() => navigate(`/dashboard/teams/settings?id=${currentWs?.id || ''}`)}
               title="Group Settings"

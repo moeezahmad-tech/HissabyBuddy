@@ -33,6 +33,7 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
+  updateUserLocal: (displayName: string, email?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -276,6 +277,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   const closeAuthModal = () => setIsAuthModalOpen(false);
 
+  const updateUserLocal = async (displayName: string, email?: string) => {
+    if (!user) return;
+    if (auth?.currentUser) {
+      try {
+        await updateProfile(auth.currentUser, { displayName });
+      } catch (err) {
+        console.warn("Failed to update Firebase profile display name:", err);
+      }
+    }
+    const updated = {
+      ...user,
+      displayName,
+      email: email || user.email,
+    };
+    setUser(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -289,7 +308,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearAuthError,
         isAuthModalOpen,
         openAuthModal,
-        closeAuthModal
+        closeAuthModal,
+        updateUserLocal
       }}
     >
       {children}

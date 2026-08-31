@@ -3,7 +3,7 @@ import { ShieldCheck, User, CheckCircle2, LogOut, RefreshCw, Sun, Moon, Info } f
 import { useAuth } from '../context/AuthContext';
 
 export const SettingsView: React.FC = () => {
-  const { user, signInWithGoogle, signOut } = useAuth();
+  const { user, signInWithGoogle, signOut, updateUserLocal } = useAuth();
 
   // Profile Form State
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
@@ -43,6 +43,9 @@ export const SettingsView: React.FC = () => {
     setIsSaving(true);
     setSaveSuccess(null);
     try {
+      // Delightful delay to show the spinner and give the user feedback
+      await new Promise((resolve) => setTimeout(resolve, 850));
+
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/api/auth/profile`, {
         method: 'PUT',
@@ -59,7 +62,10 @@ export const SettingsView: React.FC = () => {
       });
       const data = await response.json();
       if (data.status === 'success') {
-        setSaveSuccess('Profile preferences updated in the database!');
+        // Sync local React context user state
+        await updateUserLocal(displayName.trim(), email.trim() || undefined);
+
+        setSaveSuccess('Profile preferences updated in the database and local session!');
         setTimeout(() => setSaveSuccess(null), 4000);
       }
     } catch {
