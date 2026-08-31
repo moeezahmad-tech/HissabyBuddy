@@ -21,7 +21,6 @@ interface PendingInvite {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const INVITES_KEY = (wsId: string) => `hissaby_invites_${wsId}`;
 
 function loadExpenseMode(wsId: string): ExpenseMode {
   try {
@@ -123,8 +122,6 @@ export const GroupSettingsPage: React.FC = () => {
     return ownerMember.email === defaultUserEmail || ownerMember.user_id === user?.uid;
   }, [members, defaultUserEmail, user]);
 
-  const totalBudget = currentWs?.total_budget || 0;
-  const totalSpent = (currentWs?.spendings || []).reduce((acc, s) => acc + s.amount, 0);
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);

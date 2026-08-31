@@ -13,6 +13,7 @@ export const SettingsView: React.FC = () => {
   
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch current user details from SQL database on load
   useEffect(() => {
@@ -101,83 +102,90 @@ export const SettingsView: React.FC = () => {
             </div>
 
             {user ? (
-              <form onSubmit={handleSaveProfile} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              isLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-6 h-6 text-[#5391FE] animate-spin" />
+                  <p className="text-xs text-slate-400 font-semibold animate-pulse">Loading profile settings...</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSaveProfile} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">Display Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="e.g. Moeez Ahmad"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">Email Address</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@hissaby.pk"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE]"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Display Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="e.g. Moeez Ahmad"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE]"
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">About Me (Bio)</label>
+                    <textarea
+                      value={about}
+                      onChange={(e) => setAbout(e.target.value)}
+                      placeholder="Briefly describe your financial role or organization..."
+                      rows={3}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 resize-none focus:outline-none focus:border-[#5391FE]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Email Address</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@hissaby.pk"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-[#5391FE]"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">About Me (Bio)</label>
-                  <textarea
-                    value={about}
-                    onChange={(e) => setAbout(e.target.value)}
-                    placeholder="Briefly describe your financial role or organization..."
-                    rows={3}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 resize-none focus:outline-none focus:border-[#5391FE]"
-                  />
-                </div>
-
-                {/* Theme toggle section */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-700">App Theme Settings</p>
-                    <p className="text-[10px] text-slate-400">Toggle dark mode preferences for the ledger.</p>
+                  {/* Theme toggle section */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">App Theme Settings</p>
+                      <p className="text-[10px] text-slate-400">Toggle dark mode preferences for the ledger.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setDarkMode(true)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          darkMode ? 'bg-white text-[#012456] shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <Moon className="w-3.5 h-3.5" />
+                        <span>Dark</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDarkMode(false)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          !darkMode ? 'bg-white text-[#012456] shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <Sun className="w-3.5 h-3.5" />
+                        <span>Light</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100">
+
+                  <div className="pt-2">
                     <button
-                      type="button"
-                      onClick={() => setDarkMode(true)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        darkMode ? 'bg-white text-[#012456] shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-5 py-2.5 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-slate-200 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                     >
-                      <Moon className="w-3.5 h-3.5" />
-                      <span>Dark</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDarkMode(false)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        !darkMode ? 'bg-white text-[#012456] shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      <Sun className="w-3.5 h-3.5" />
-                      <span>Light</span>
+                      {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                      <span>Save Profile Changes</span>
                     </button>
                   </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-5 py-2.5 rounded-xl bg-[#5391FE] hover:bg-[#437de0] disabled:bg-slate-200 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-                  >
-                    {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-                    <span>Save Profile Changes</span>
-                  </button>
-                </div>
-              </form>
+                </form>
+              )
             ) : (
               <div className="p-6 text-center bg-slate-50 rounded-2xl border border-slate-200">
                 <p className="text-xs text-slate-600 mb-4">You need to sign in to configure your user profile details.</p>
