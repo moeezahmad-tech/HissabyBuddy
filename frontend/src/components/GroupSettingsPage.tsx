@@ -180,7 +180,7 @@ export const GroupSettingsPage: React.FC = () => {
         body: JSON.stringify({ email: emailToInvite }),
       });
       const data = await response.json();
-      if (data.status === 'success') {
+      if (response.ok && data.status === 'success') {
         showSuccess(`Invitation email successfully dispatched to ${emailToInvite}!`);
         const updatedInvite = {
           id: data.invitation.id,
@@ -190,6 +190,8 @@ export const GroupSettingsPage: React.FC = () => {
         };
         setPendingInvites(prev => [updatedInvite, ...prev]);
         setInviteEmail('');
+      } else {
+        alert(data.error || data.message || 'Failed to send invitation.');
       }
     } catch {
       alert('Failed to send invitation.');

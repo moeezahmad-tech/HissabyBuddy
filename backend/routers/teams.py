@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from core.security import get_current_user
@@ -300,7 +300,7 @@ async def update_workspace_budget_cap(workspace_id: str, payload: BudgetUpdate, 
 # ------------------------------------------------------------------------------
 
 @router.post("/{workspace_id}/spendings", status_code=status.HTTP_201_CREATED)
-async def add_workspace_spending(workspace_id: str, payload: TeamSpendingCreate, user: Dict[str, Any] = Depends(get_current_user)):
+async def add_workspace_spending(workspace_id: str, payload: TeamSpendingCreate, background_tasks: BackgroundTasks, user: Dict[str, Any] = Depends(get_current_user)):
     uid = user.get("uid", "guest_user")
     payer_id = payload.payer_id or uid
     splits_data = [s.dict() for s in payload.splits] if payload.splits else None
@@ -319,7 +319,7 @@ async def add_workspace_spending(workspace_id: str, payload: TeamSpendingCreate,
             splits=splits_data
         )
 
-        # SMTP Email Alert to other group members
+        # SMTP Email Alert to other group members (via BackgroundTasks)
         try:
             from services.email_service import EmailService
             members = storage_service.get_workspace_members(workspace_id)
@@ -333,7 +333,8 @@ async def add_workspace_spending(workspace_id: str, payload: TeamSpendingCreate,
                 for m in members:
                     m_email = m.get("email")
                     if m_email and m_email.strip().lower() != user.get("email", "").strip().lower() and "@hissaby.local" not in m_email:
-                        EmailService.send_payment_request(
+                        background_tasks.add_task(
+                            EmailService.send_payment_request,
                             to_email=m_email,
                             payer_name=payer_name,
                             group_name=group_name,
@@ -342,7 +343,7 @@ async def add_workspace_spending(workspace_id: str, payload: TeamSpendingCreate,
                             share_amount=share_amount
                         )
         except Exception as mail_err:
-            logger.error(f"Failed to dispatch spending emails: {mail_err}")
+            logger.error(f"Failed to queue spending emails: {mail_err}")
 
         return {"status": "success", "spending": spending}
     except Exception as e:
@@ -408,7 +409,7 @@ async def get_workspace_invitations(workspace_id: str, user: Dict[str, Any] = De
         storage_service.put_conn(conn)
 
 @router.post("/{workspace_id}/invitations")
-async def create_workspace_invitation(workspace_id: str, payload: InvitationCreate, user: Dict[str, Any] = Depends(get_current_user)):
+async def create_workspace_invitation(workspace_id: str, payload: InvitationCreate, background_tasks: BackgroundTasks, user: Dict[str, Any] = Depends(get_current_user)):
     """Creates a new invitation token and dispatches an invite email via SMTP."""
     uid = user.get("uid", "guest_user")
     inviter_name = user.get("display_name") or user.get("email") or "Your Friend"
@@ -427,6 +428,9 @@ async def create_workspace_invitation(workspace_id: str, payload: InvitationCrea
             token = str(uuid.uuid4())
             expiry = datetime.utcnow() + timedelta(days=7)
 
+            # Ensure inviter exists in database users table
+            storage_service._ensure_user(cur, uid)
+
             cur.execute("""
                 INSERT INTO workspace_invitations (workspace_id, invited_email, role, invite_token, invited_by, expires_at)
                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -436,9 +440,10 @@ async def create_workspace_invitation(workspace_id: str, payload: InvitationCrea
             invite = dict(cur.fetchone())
             conn.commit()
 
-            # SMTP dispatch
+            # SMTP dispatch via BackgroundTasks
             from services.email_service import EmailService
-            EmailService.send_group_invitation(
+            background_tasks.add_task(
+                EmailService.send_group_invitation,
                 to_email=invited_email,
                 inviter_name=inviter_name,
                 group_name=group_name,
