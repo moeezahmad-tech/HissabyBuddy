@@ -805,10 +805,7 @@ class PostgresStorageService:
                     SELECT wm.id, wm.workspace_id, wm.user_id, wm.role, wm.spending_limit,
                            COALESCE(NULLIF(wm.custom_title, ''), CASE WHEN wm.role = 'owner' THEN 'You (Creator)' ELSE 'Member' END) as custom_title,
                            wm.joined_at,
-                           CASE 
-                               WHEN wm.role = 'owner' THEN 'You (Creator)'
-                               ELSE COALESCE(NULLIF(u.display_name, 'User'), 'Member')
-                           END as display_name,
+                           COALESCE(NULLIF(u.display_name, ''), CASE WHEN wm.role = 'owner' THEN 'Creator' ELSE 'Member' END) as display_name,
                            CASE
                                WHEN u.email IS NULL OR u.email LIKE '%%@hissaby.local' THEN 'you@hissaby.pk'
                                ELSE u.email

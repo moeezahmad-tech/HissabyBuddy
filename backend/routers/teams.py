@@ -144,7 +144,7 @@ async def create_workspace(payload: WorkspaceCreate, user: Dict[str, Any] = Depe
         creator_email = payload.creator_email or user.get("email")
         if not creator_email or "@hissaby.local" in creator_email:
             creator_email = "you@hissaby.pk"
-        creator_name = payload.creator_name or "You (Creator)"
+        creator_name = payload.creator_name or user.get("name") or user.get("display_name") or "You (Creator)"
 
         t_settings = payload.theme_settings or {}
         if payload.is_temporary:

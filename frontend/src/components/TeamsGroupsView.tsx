@@ -155,17 +155,23 @@ export const TeamsGroupsView: React.FC = () => {
   const members = useMemo(() => {
     const base = rawMembers.length > 0 ? rawMembers : [{
       id: 'm-me', workspace_id: currentWs?.id || '', user_id: user?.uid || 'usr_me',
-      role: 'owner' as const, display_name: 'You (Creator)', email: defaultUserEmail,
+      role: 'owner' as const, display_name: user?.displayName || 'You (Creator)', email: defaultUserEmail,
       custom_title: 'You (Creator)', total_spent: 0,
     }];
-    return base.map((m) => ({
-      ...m,
-      display_name: m.role === 'owner' ? 'You (Creator)' : (m.display_name || 'Member'),
-      role: m.role || 'owner',
-      email: (m.email && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail,
-      custom_title: m.role === 'owner' ? (m.custom_title || 'You (Creator)') : m.custom_title,
-    }));
-  }, [rawMembers, currentWs, defaultUserEmail, user]);
+    return base.map((m) => {
+      const isMe = m.user_id === user?.uid || (m.role === 'owner' && isOwner);
+      const name = isMe && user?.displayName ? user.displayName : (m.display_name || 'Member');
+      return {
+        ...m,
+        display_name: isMe ? `${name} (You)` : name,
+        role: m.role || 'owner',
+        email: isMe && user?.email && !user.email.includes('@hissaby.local')
+          ? user.email
+          : ((m.email && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail),
+        custom_title: m.role === 'owner' ? (m.custom_title || 'You (Creator)') : m.custom_title,
+      };
+    });
+  }, [rawMembers, currentWs, defaultUserEmail, user, isOwner]);
 
   // ── Is the current user the group owner? ──────────────────────────────────
   const isOwner = useMemo(() => {

@@ -28,10 +28,11 @@ class Settings:
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
-    # Email SMTP configuration
+    # Email SMTP & API configuration
     EMAIL_PASSWORD: str = os.getenv("EMAIL_PASSWORD", "")
     EMAIL_ID: str = os.getenv("EMAIL_ID", "")
     EMAIL_SMTP: str = os.getenv("EMAIL_SMTP", "")
     EMAIL_IMAP: str = os.getenv("EMAIL_IMAP", "")
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
 
 settings = Settings()

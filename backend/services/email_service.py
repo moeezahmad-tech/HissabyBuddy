@@ -12,7 +12,33 @@ FRONTEND_PROD_URL = "https://hissabybuddy.techkreative.com"
 class EmailService:
     @staticmethod
     def send_email(to_email: str, subject: str, html_content: str):
-        """Sends an HTML email using SMTP configuration from .env"""
+        """Sends an HTML email using HTTP API (Resend) or fallback SMTP configuration"""
+        # 1. Try Resend HTTP API if configured (highly recommended for production / Render)
+        if settings.RESEND_API_KEY:
+            try:
+                import requests
+                logger.info("Attempting to send email via Resend HTTP API...")
+                url = "https://api.resend.com/emails"
+                headers = {
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "from": f"Hissaby Buddy <{settings.EMAIL_ID or 'onboarding@resend.dev'}>",
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content
+                }
+                response = requests.post(url, json=payload, headers=headers, timeout=10)
+                if response.status_code in [200, 201]:
+                    logger.info(f"Email successfully sent to {to_email} via Resend HTTP API")
+                    return True
+                else:
+                    logger.error(f"Resend HTTP API returned error code {response.status_code}: {response.text}")
+            except Exception as resend_err:
+                logger.error(f"Resend HTTP API dispatch failed: {resend_err}. Falling back to SMTP...")
+
+        # 2. Fallback to direct SMTP configuration
         if not settings.EMAIL_ID or not settings.EMAIL_SMTP or not settings.EMAIL_PASSWORD:
             logger.warning("Email configuration missing. Skipping SMTP dispatch.")
             return False

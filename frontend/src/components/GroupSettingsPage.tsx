@@ -117,15 +117,17 @@ export const GroupSettingsPage: React.FC = () => {
     const raw = currentWs?.members || [];
     if (raw.length > 0) return raw.map((m) => {
       const isMe = m.user_id === user?.uid || (m.role === 'owner' && isOwner);
+      const name = isMe && user?.displayName ? user.displayName : (m.display_name || 'Member');
       return {
         ...m,
-        display_name: m.role === 'owner' ? 'You (Creator)' : (m.display_name || 'Member'),
+        display_name: isMe ? `${name} (You)` : name,
         email: isMe && user?.email && !user.email.includes('@hissaby.local')
           ? user.email
           : ((m.email && m.email !== 'you@hissaby.pk' && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail),
       };
     });
-    return [{ id: 'm-me', workspace_id: wsId, user_id: user?.uid || 'usr_me', role: 'owner' as const, display_name: 'You (Creator)', email: defaultUserEmail, custom_title: 'You (Creator)', total_spent: 0 }];
+    const defaultName = user?.displayName || 'Creator';
+    return [{ id: 'm-me', workspace_id: wsId, user_id: user?.uid || 'usr_me', role: 'owner' as const, display_name: `${defaultName} (You)`, email: defaultUserEmail, custom_title: 'You (Creator)', total_spent: 0 }];
   }, [currentWs?.members, wsId, user, defaultUserEmail, isOwner]);
 
 
