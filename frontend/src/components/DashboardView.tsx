@@ -1,14 +1,22 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Sparkles } from 'lucide-react';
 import KPICards from './KPICards';
-import SpendingTrendsChart from './SpendingTrendsChart';
 import DailySpendingChart from './DailySpendingChart';
 import RecentTransactionsTable from './RecentTransactionsTable';
 import QuickTransactionModal from './QuickTransactionModal';
+import DashboardTeamSnapshot from './DashboardTeamSnapshot';
 
-export const DashboardView: React.FC = () => {
+interface DashboardViewProps {
+  onNavigateTeams?: () => void;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTeams }) => {
+  const navigate = useNavigate();
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleNavigateTeams = onNavigateTeams || (() => navigate('/dashboard/teams'));
 
   const handleTransactionAdded = () => {
     setRefreshKey(prev => prev + 1);
@@ -21,10 +29,10 @@ export const DashboardView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/60">
         <div>
           <h2 className="text-xl font-black text-[#012456] tracking-tight">
-            Financial Dashboard &amp; Analytics
+            Financial Overview
           </h2>
           <p className="text-xs text-slate-500">
-            Real-time cashflow intelligence, OCR statements, and AI financial tracking
+            Real-time cashflow, statements, and AI tracking
           </p>
         </div>
 
@@ -54,13 +62,17 @@ export const DashboardView: React.FC = () => {
         <KPICards />
       </section>
 
-      {/* 2. Dual Analytics Charts Grid: Day-Wise Activity & Category Breakdown */}
-      <section aria-label="Financial Trends & Velocity" className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start" key={`charts-${refreshKey}`}>
+      {/* 2. Daily Spending Chart */}
+      <section aria-label="Daily Spending Activity" key={`charts-${refreshKey}`}>
         <DailySpendingChart />
-        <SpendingTrendsChart />
       </section>
 
-      {/* 3. Recent Transactions Table */}
+      {/* 3. Collaborative Groups & Shared Money Snapshot */}
+      <section aria-label="Shared Collaborative Budgets" key={`teams-${refreshKey}`}>
+        <DashboardTeamSnapshot onNavigateTeams={handleNavigateTeams} />
+      </section>
+
+      {/* 4. Recent Transactions Table */}
       <section aria-label="Recent Financial Activity" key={`table-${refreshKey}`}>
         <RecentTransactionsTable />
       </section>

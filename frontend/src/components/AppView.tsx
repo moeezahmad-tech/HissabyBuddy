@@ -1,55 +1,134 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import SidebarNavigation from './SidebarNavigation';
 import Header from './Header';
-import DashboardView from './DashboardView';
-import AIFinancialAssistantView from './AIFinancialAssistantView';
-import DocumentUploadView from './DocumentUploadView';
-import RecurringMoneyView from './RecurringMoneyView';
-import SettingsView from './SettingsView';
 
 interface AppViewProps {
-  onBackToLanding: () => void;
+  onBackToLanding?: () => void;
 }
 
 export const AppView: React.FC<AppViewProps> = ({ onBackToLanding }) => {
-  const [activeView, setActiveView] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hissaby_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  const getTitle = () => {
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('hissaby_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Close mobile sidebar on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const getActiveView = () => {
+    const path = location.pathname.toLowerCase();
+    if (path.includes('/teams')) return 'teams';
+    if (path.includes('/loans') || path.includes('/loan')) return 'loans';
+    if (path.includes('/recurring')) return 'recurring';
+    if (path.includes('/assistant')) return 'assistant';
+    if (path.includes('/upload')) return 'upload';
+    if (path.includes('/settings')) return 'settings';
+    return 'dashboard';
+  };
+
+  const activeView = getActiveView();
+
+  const getHeaderInfo = () => {
     switch (activeView) {
       case 'dashboard':
-        return 'Financial Dashboard & Real-Time Analytics';
+        return {
+          title: 'Dashboard',
+          subtitle: 'Real-time cashflow & insights'
+        };
+      case 'teams':
+        return {
+          title: 'Shared Groups',
+          subtitle: 'Shared bills & grocery splitting'
+        };
+      case 'loans':
+        return {
+          title: 'Loans & Debts',
+          subtitle: 'Track money lent and borrowed (Udhaar)'
+        };
       case 'recurring':
-        return 'Recurring Money & Fixed Commitments (Rent, Salary, Bills)';
+        return {
+          title: 'Recurring Money',
+          subtitle: 'Bills, rent & fixed commitments'
+        };
       case 'assistant':
-        return 'AI Financial Chat Assistant';
+        return {
+          title: 'AI Assistant',
+          subtitle: 'Ask questions about your finances'
+        };
       case 'upload':
-        return 'Smart Document Upload & OCR';
+        return {
+          title: 'Document Upload',
+          subtitle: 'Scan statements, receipts & invoices'
+        };
       case 'settings':
-        return 'Account & Security Settings';
+        return {
+          title: 'Account Settings',
+          subtitle: 'Security & preferences'
+        };
       default:
-        return 'Dashboard';
+        return {
+          title: 'Dashboard',
+          subtitle: 'Real-time cashflow & insights'
+        };
     }
   };
 
+  const { title, subtitle } = getHeaderInfo();
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* 1. Dedicated Sidebar Navigation */}
+      {/* 1. Collapsible & Responsive Sidebar */}
       <SidebarNavigation 
         activeView={activeView} 
-        setActiveView={setActiveView} 
-        onBackToLanding={onBackToLanding} 
+        onBackToLanding={onBackToLanding || (() => navigate('/'))}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapse}
+        isMobileOpen={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
 
-      {/* 2. Top Header */}
-      <Header title={getTitle()} />
+      {/* 2. Top Header with responsive margin & mobile hamburger toggle */}
+      <Header 
+        title={title} 
+        subtitle={subtitle}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+      />
 
-      {/* 3. Main Routed View Area */}
-      <main className="ml-72 pt-28 px-6 sm:px-10 pb-16 w-[calc(100%-18rem)] max-w-full">
-        {activeView === 'dashboard' && <DashboardView />}
-        {activeView === 'recurring' && <RecurringMoneyView />}
-        {activeView === 'assistant' && <AIFinancialAssistantView />}
-        {activeView === 'upload' && <DocumentUploadView />}
-        {activeView === 'settings' && <SettingsView />}
+      {/* 3. Main Routed View Area with dynamic margin */}
+      <main 
+        className={`pt-24 sm:pt-28 px-4 sm:px-8 lg:px-10 pb-16 transition-all duration-300 ${
+          isSidebarCollapsed 
+            ? 'lg:ml-20 lg:w-[calc(100%-5rem)]' 
+            : 'lg:ml-64 lg:w-[calc(100%-16rem)]'
+        } ml-0 w-full max-w-full`}
+      >
+        <Outlet />
       </main>
     </div>
   );

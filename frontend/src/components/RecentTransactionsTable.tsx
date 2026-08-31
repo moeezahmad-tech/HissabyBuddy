@@ -42,19 +42,25 @@ export const RecentTransactionsTable: React.FC = () => {
       if (user?.token) {
         headers['Authorization'] = `Bearer ${user.token}`;
       }
-      const res = await fetch(`${apiUrl}/api/dashboard/transactions`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        const txList = data.transactions || [];
+      if (user?.uid) {
+        headers['X-User-Id'] = user.uid;
+      }
+      const res = await fetch(`${apiUrl}/api/dashboard/transactions`, {
+        headers,
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(15000) : undefined,
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        const txList = data?.transactions || [];
         localStorage.setItem('hissaby_cached_transactions', JSON.stringify(txList));
         setTransactions(txList);
-      } else {
+      } else if (res && !res.ok) {
         const errJson = await res.json().catch(() => ({ error: 'Failed to fetch transactions' }));
         setError(errJson.error || 'Server error loading transaction records.');
       }
     } catch {
-      setError('Unable to reach transaction ledger service.');
-      setTransactions([]);
+      // Keep cached transactions on network issues
     } finally {
       setLoading(false);
     }
@@ -69,10 +75,10 @@ export const RecentTransactionsTable: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h3 className="text-xl font-black text-[#012456] tracking-tight">
-            Recent Financial Activities
+            Recent Transactions
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Auto-synchronized with Firebase Firestore per-user data tenancy
+            Latest income and expense records
           </p>
         </div>
         {user && (
@@ -112,9 +118,10 @@ export const RecentTransactionsTable: React.FC = () => {
         </div>
       )}
 
-      {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">
-          Loading synchronized transactions...
+      {loading && transactions.length === 0 ? (
+        <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-2">
+          <RefreshCw className="w-5 h-5 text-[#5391FE] animate-spin" />
+          <span>Loading synchronized transactions...</span>
         </div>
       ) : transactions.length === 0 ? (
         <div className="py-16 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">

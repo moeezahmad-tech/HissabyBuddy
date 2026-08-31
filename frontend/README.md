@@ -18,7 +18,7 @@
 
 ---
 
-## 7 Core Features Implemented
+## 8 Core Features Implemented
 
 1. **Smart Document Upload & RAG**  
    Upload PDF bank statements or financial reports so the system can automatically read, chunk, and index them into Pinecone for semantic vector searching.
@@ -30,10 +30,12 @@
    Sign in securely using Firebase Auth to keep your financial records private and separated per user.
 5. **Structured Transaction & Budget Logging**  
    Save, categorize, and manage your income, budgets, and transaction histories directly in Firebase Firestore.
-6. **Custom Responsive Interface**  
-   Navigate through a clean, white-themed layout styled with Tailwind CSS, custom logo branding (`/logo.png`), and smooth entrance animations.
-7. **Sidebar Navigation**  
-   Easily switch between different sections of the app—such as the dashboard, chat assistant, document upload zone, and settings—using a dedicated sidebar component with bottom user profile positioning.
+6. **Collaborative Groups & SQL Invites**  
+   Invite users to shared groups via custom tokens sent through email. Includes a combined settings interface with budget caps, payment modes, and real-time SMTP split billing notifications.
+7. **Temporary Quick Splits & Profile Customization**  
+   Create temporary groups for trips or dinners out. Customize display names, bios/about descriptions, and Light/Dark themes dynamically backed by Neon PostgreSQL.
+8. **Sidebar Navigation & Unified Login Header**  
+   Easily switch between different sections of the app using a dedicated sidebar component with bottom user profile positioning. Navigating the landing page uses a clean header nav that simplifies context inside login screens.
 
 ---
 

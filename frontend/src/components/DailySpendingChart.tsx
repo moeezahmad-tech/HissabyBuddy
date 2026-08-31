@@ -13,32 +13,68 @@ interface DailyVelocity {
 export const DailySpendingChart: React.FC = () => {
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
-  const [dailyData, setDailyData] = useState<DailyVelocity[]>([]);
+  const [dailyData, setDailyData] = useState<DailyVelocity[]>(() => {
+    try {
+      const cached = localStorage.getItem('hissaby_cached_daily_velocity');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    
+    // Provide clean 7-day default structure so the chart never hangs on an empty loading box
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(today.getDate() - (6 - i));
+      return {
+        day: days[d.getDay()],
+        date: `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}`,
+        spend: 0,
+        income: 0,
+      };
+    });
+  });
   const [loading, setLoading] = useState(false);
 
   const fetchDailyData = async () => {
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (user?.token) {
         headers['Authorization'] = `Bearer ${user.token}`;
       }
-      const res = await fetch(`${apiUrl}/api/dashboard/spending-trends`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setDailyData(data.dailyVelocity || []);
+      if (user?.uid) {
+        headers['X-User-Id'] = user.uid;
+      }
+      const res = await fetch(`${apiUrl}/api/dashboard/spending-trends`, {
+        headers,
+        signal: controller.signal,
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.dailyVelocity && Array.isArray(data.dailyVelocity) && data.dailyVelocity.length > 0) {
+          localStorage.setItem('hissaby_cached_daily_velocity', JSON.stringify(data.dailyVelocity));
+          setDailyData(data.dailyVelocity);
+        }
       }
     } catch {
-      // fallback
+      // fallback to cached/initial
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDailyData();
-  }, [user]);
+  }, [user?.uid]);
 
   const maxVal = Math.max(
     ...dailyData.map(d => Math.max(d.spend, d.income)),
@@ -46,20 +82,18 @@ export const DailySpendingChart: React.FC = () => {
   );
 
   return (
-    <div className="rounded-3xl bg-white border border-slate-200 shadow-xs p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xs h-full flex flex-col justify-between transition-all duration-300">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Activity Tracking
-            </span>
+          <div className="flex items-center gap-2 text-[#5391FE] text-xs font-bold uppercase tracking-wider mb-1">
+            <BarChart2 className="w-4 h-4" />
+            <span>Activity Tracking</span>
           </div>
-          <h3 className="text-lg font-black text-[#012456] tracking-tight mt-0.5 flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-[#5391FE]" />
-            Day-Wise Income vs Spending Velocity
+          <h3 className="text-xl font-black text-[#012456] tracking-tight">
+            Daily Cash Flow
           </h3>
-          <p className="text-xs text-slate-500">
-            Daily cashflow distribution and activity trends over the last 7 days.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Income vs spending over the last 7 days
           </p>
         </div>
 
@@ -85,14 +119,19 @@ export const DailySpendingChart: React.FC = () => {
         </div>
       </div>
 
-      {dailyData.length === 0 ? (
+      {loading && dailyData.length === 0 ? (
+        <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl gap-2">
+          <RefreshCw className="w-6 h-6 text-[#5391FE] animate-spin" />
+          <span>Synchronizing daily cashflow metrics...</span>
+        </div>
+      ) : dailyData.length === 0 ? (
         <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
           <Calendar className="w-8 h-8 text-slate-300 mb-2" />
           <span>No day-wise transactions logged yet.</span>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="h-56 flex items-end justify-between gap-3 sm:gap-6 pt-8 px-2">
+        <div className="flex-1 flex flex-col justify-between">
+          <div className="h-64 flex items-end justify-between gap-3 sm:gap-6 pt-6 border-b border-slate-200 pb-2">
             {dailyData.map((d, idx) => {
               const spendHeight = maxVal > 0 ? Math.max((d.spend / maxVal) * 100, 4) : 4;
               const incomeHeight = maxVal > 0 ? Math.max((d.income / maxVal) * 100, 4) : 4;
@@ -104,7 +143,7 @@ export const DailySpendingChart: React.FC = () => {
                     {/* Income Bar */}
                     <div
                       style={{ height: d.income > 0 ? `${incomeHeight}%` : '4px' }}
-                      className={`w-full max-w-[16px] rounded-t-md transition-all relative ${
+                      className={`w-full max-w-[18px] rounded-t-lg transition-all relative ${
                         d.income > 0 ? 'bg-emerald-500 group-hover:bg-emerald-600' : 'bg-slate-100'
                       }`}
                     >
@@ -118,7 +157,7 @@ export const DailySpendingChart: React.FC = () => {
                     {/* Spend Bar */}
                     <div
                       style={{ height: d.spend > 0 ? `${spendHeight}%` : '4px' }}
-                      className={`w-full max-w-[16px] rounded-t-md transition-all relative ${
+                      className={`w-full max-w-[18px] rounded-t-lg transition-all relative ${
                         d.spend > 0 ? 'bg-rose-500 group-hover:bg-rose-600' : 'bg-slate-100'
                       }`}
                     >
@@ -145,14 +184,14 @@ export const DailySpendingChart: React.FC = () => {
             })}
           </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500 font-medium">
+          <div className="flex items-center justify-between pt-4 text-xs font-semibold text-slate-500">
             <span className="flex items-center gap-1.5">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-              Total Inflow: <strong>{formatAmount(dailyData.reduce((acc, curr) => acc + curr.income, 0))}</strong>
+              Total Inflow: <strong className="text-emerald-600">{formatAmount(dailyData.reduce((acc, curr) => acc + curr.income, 0))}</strong>
             </span>
             <span className="flex items-center gap-1.5">
               <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
-              Total Outflow: <strong>{formatAmount(dailyData.reduce((acc, curr) => acc + curr.spend, 0))}</strong>
+              Total Outflow: <strong className="text-rose-600">{formatAmount(dailyData.reduce((acc, curr) => acc + curr.spend, 0))}</strong>
             </span>
           </div>
         </div>

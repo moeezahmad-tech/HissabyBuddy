@@ -187,10 +187,10 @@ export const DocumentUploadView: React.FC = () => {
       <div>
         <h2 className="text-2xl font-black text-[#012456] tracking-tight flex items-center gap-2">
           <UploadCloud className="w-6 h-6 text-[#5391FE]" />
-          Smart Document Upload &amp; OCR
+          Document Upload &amp; OCR
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Upload PDF bank statements, PNG/JPG receipts, or CSVs. The system extracts text via OCR, updates your ledger, and indexes 384-d vectors into Pinecone.
+          Upload PDF statements, receipts, or CSVs for automatic extraction.
         </p>
       </div>
 
@@ -252,10 +252,10 @@ export const DocumentUploadView: React.FC = () => {
           {uploading ? <RefreshCw className="w-8 h-8 animate-spin" /> : <UploadCloud className="w-8 h-8" />}
         </div>
         <h3 className="text-base font-bold text-[#012456]">
-          {uploading ? 'Scanning & running OCR on document...' : 'Click or Drag to Upload Statement, Invoice, or Receipt'}
+          {uploading ? 'Scanning & extracting text...' : 'Upload Statement or Receipt'}
         </h3>
         <p className="text-xs text-slate-500 mt-1">
-          Supports PDF, PNG, JPG, CSV, and TXT statements with OCR up to 25MB
+          Supports PDF, PNG, JPG, and CSV up to 25MB
         </p>
         <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#5391FE] text-white text-xs font-bold shadow-xs">
           <span>{uploading ? 'Processing with OCR...' : 'Select File from Device'}</span>

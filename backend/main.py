@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.firebase import init_firebase
 from core.security import get_current_user
-from routers import auth, chat, dashboard, documents
+from routers import auth, chat, dashboard, documents, teams, contact
 from services.ocr_service import (
     extract_financial_data_with_vlm,
     convert_vlm_data_to_transactions,
@@ -24,8 +24,8 @@ logger = logging.getLogger("hissaby.api")
 
 app = FastAPI(
     title="Hissaby Buddy API",
-    description="Backend API for Hissaby Buddy - Groq Vision, Pinecone RAG & Firebase Auth",
-    version="2.1.0"
+    description="Backend API for Hissaby Buddy - Groq Vision, Pinecone RAG, Firebase Auth & Neon DB",
+    version="2.2.0"
 )
 
 # Global CORS Configuration: Localhost, Custom Domain & Vercel
@@ -100,6 +100,8 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(dashboard.router)
 app.include_router(documents.router)
+app.include_router(teams.router)
+app.include_router(contact.router)
 
 @app.get("/")
 async def root():

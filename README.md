@@ -62,18 +62,26 @@ The interface follows a tailored, ultra-clean white design with distinct contras
 - **1-Click Post to Ledger:** Automatically records due obligations into the verified transaction ledger without manual retyping.
 - **Summary Metrics:** Total Monthly Outflow, Total Monthly Inflow, Net Recurring Surplus.
 
-### 3. 🤖 AI Financial Assistant (Groq Copilot)
+### 3. 👥 Collaborative Shared Groups & Teams (`/teams`)
+- **Combined settings page**: Restructured group settings into a single top-to-bottom layout with info overview, budget cap updates, payment mode selectors, member invites, and Danger Zone sections.
+- **SQL & SMTP invitations**: Send email invitations using custom database tokens. Invited members automatically join the shared group ledger upon login.
+- **Dynamic budget cap updates**: Update budget limits with apply modes (permanently, current month, or next month) to ensure entire team alignment.
+- **Automated payment alerts**: Notify members on split bill shares instantly via SMTP email alerts upon transaction log.
+- **Temporary quick splits**: Toggle groups as temporary quick groups (e.g. for dinner hangouts, trips, or utility split bills).
+- **Payment Modes**: Choose between Equal Split, Single Payer (NGO / sponsor pays all), or Custom Percentage contributions.
+
+### 4. 🤖 AI Financial Assistant (Groq Copilot)
 - **Zero-Latency Inference:** Powered by Groq Cloud LPU acceleration running **LLaMA-3.3-70B**.
 - **Pinecone Vector RAG:** Answers questions grounded in real text chunks extracted from uploaded bank statements, tax documents, and receipts.
 - **Live Ledger Awareness:** Copilot knows your current liquid balance, recurring commitments, and recent transactions.
 - **Local Persistence:** Conversation history persists across browser reloads via `localStorage`.
 
-### 4. 📄 Smart Document Ingestion & OCR
+### 5. 📄 Smart Document Ingestion & OCR
 - **Multi-Format Support:** PDF statements, CSV ledgers, TXT, PNG, and JPG receipts.
 - **Hybrid OCR Pipeline:** Combines PyMuPDF, EasyOCR, and Groq Vision for entity extraction (Payee, Purpose, Amount, Currency, Date).
 - **Automatic Vectorization:** Chunks text and upserts 384-dimensional embeddings into Pinecone vector storage.
 
-### 5. 🌍 Universal Multi-Currency Engine
+### 6. 🌍 Universal Multi-Currency Engine
 - Instant global currency switching across all components, charts, KPI cards, and modals:
   - 🇵🇰 **PKR** (`Rs `)
   - 🇺🇸 **USD** (`$`)
@@ -259,6 +267,15 @@ npm run dev
 - **Guest / Dev Mode Isolation:** Requests without tokens default to isolated `guest_user` storage.
 - **Zero Raw PII Storage:** Sensitive bank account credentials are never stored. Only sanitized financial metrics and semantic text chunks are indexed.
 - **Disk Synchronization:** All transaction modifications are written safely via atomic temporary file replacement (`hissaby_store.json.tmp` &rarr; `hissaby_store.json`).
+
+---
+
+## 🌐 Public Information Pages & Support Desk
+
+We have introduced new public routing directories for visitors:
+* 📄 **About Us Page (`/about`):** Detailed narrative of Hissaby Buddy's mission, pillars, and story.
+* 🛠 **Created by TechKreative Page (`/techkreative`):** Introduces TechKreative as the developing agency with outbound links to [techkreative.com](https://techkreative.com).
+* ✉️ **Contact Support Form (`/contact`):** A responsive form that allows users to submit support tickets. Upon submission, the backend triggers an automated SMTP email to **`team@techkreative.com`** detailing the user's name, email, subject, and message.
 
 ---
 

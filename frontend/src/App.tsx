@@ -1,24 +1,36 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import HeaderNav from './components/HeaderNav';
 import HeroSection from './components/HeroSection';
 import SevenFeatureSections from './components/SevenFeatureSections';
 import Footer from './components/Footer';
 import AppView from './components/AppView';
-import AuthModal from './components/AuthModal';
+import DashboardView from './components/DashboardView';
+import TeamsGroupsView from './components/TeamsGroupsView';
+import GroupSettingsPage from './components/GroupSettingsPage';
+import LoansView from './components/LoansView';
+import RecurringMoneyView from './components/RecurringMoneyView';
+import AIFinancialAssistantView from './components/AIFinancialAssistantView';
+import DocumentUploadView from './components/DocumentUploadView';
+import SettingsView from './components/SettingsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { useServerKeepAlive } from './hooks/useServerKeepAlive';
 import { Sparkles, RefreshCw } from 'lucide-react';
 
+import LoginPage from './components/LoginPage';
+import AboutPage from './components/AboutPage';
+import TechKreativePage from './components/TechKreativePage';
+import ContactPage from './components/ContactPage';
+
 // Landing Page Component at Route: "/"
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthModalOpen, openAuthModal, closeAuthModal } = useAuth();
+  const { user } = useAuth();
 
-  const handleOpenDashboard = () => {
+  const handleGetStarted = () => {
     if (!user) {
-      openAuthModal();
+      navigate('/login');
     } else {
       navigate('/dashboard');
     }
@@ -26,55 +38,33 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white text-black font-sans selection:bg-[#5391FE]/20 selection:text-[#012456]">
-      {/* 1. Header Navigation */}
-      <HeaderNav onOpenApp={handleOpenDashboard} />
+      {/* 1. Full 100vh Landing Header & Hero Fold */}
+      <div className="min-h-screen flex flex-col justify-between">
+        <HeaderNav onOpenApp={handleGetStarted} />
+        <HeroSection onOpenApp={handleGetStarted} />
+      </div>
 
-      {/* 2. Hero Section */}
-      <HeroSection onOpenApp={handleOpenDashboard} />
+      {/* 2. 7 Dedicated Feature Sections */}
+      <SevenFeatureSections onOpenApp={handleGetStarted} />
 
-      {/* 3. 7 Dedicated Feature Sections */}
-      <SevenFeatureSections onOpenApp={handleOpenDashboard} />
-
-      {/* 4. Clean Footer */}
+      {/* 3. Clean Footer */}
       <Footer />
-
-      {/* Global Authentication Modal */}
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
-        onClose={() => {
-          closeAuthModal();
-          if (user) {
-            navigate('/dashboard');
-          }
-        }} 
-      />
     </div>
   );
 };
 
-// Protected Dashboard Component at Route: "/dashboard"
-const DashboardPage: React.FC = () => {
+// Protected Layout Component for Dashboard & Sidebar Routes
+const ProtectedDashboardLayout: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthModalOpen, closeAuthModal } = useAuth();
+  const location = useLocation();
+  const { user } = useAuth();
 
-  // If user is not authenticated on /dashboard, show dedicated login screen
+  // If user is not authenticated, redirect to dedicated login page with return state
   if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <AuthModal 
-          isOpen={true} 
-          onClose={() => navigate('/')} 
-        />
-      </div>
-    );
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return (
-    <>
-      <AppView onBackToLanding={() => navigate('/')} />
-      <AuthModal isOpen={isAuthModalOpen} onClose={closeAuthModal} />
-    </>
-  );
+  return <AppView onBackToLanding={() => navigate('/')} />;
 };
 
 export const App: React.FC = () => {
@@ -102,7 +92,32 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/techkreative" element={<TechKreativePage />} />
+            <Route path="/contact" element={<ContactPage />} />
+
+            {/* Protected Sidebar Routes nested under /dashboard */}
+            <Route path="/dashboard" element={<ProtectedDashboardLayout />}>
+              <Route index element={<DashboardView />} />
+              <Route path="teams" element={<TeamsGroupsView />} />
+              <Route path="teams/settings" element={<GroupSettingsPage />} />
+              <Route path="loans" element={<LoansView />} />
+              <Route path="recurring" element={<RecurringMoneyView />} />
+              <Route path="assistant" element={<AIFinancialAssistantView />} />
+              <Route path="upload" element={<DocumentUploadView />} />
+              <Route path="settings" element={<SettingsView />} />
+            </Route>
+
+            {/* Shorthand alias routes for direct URL navigation */}
+            <Route path="/teams" element={<Navigate to="/dashboard/teams" replace />} />
+            <Route path="/loans" element={<Navigate to="/dashboard/loans" replace />} />
+            <Route path="/recurring" element={<Navigate to="/dashboard/recurring" replace />} />
+            <Route path="/assistant" element={<Navigate to="/dashboard/assistant" replace />} />
+            <Route path="/upload" element={<Navigate to="/dashboard/upload" replace />} />
+            <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+
+            {/* Fallback route */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

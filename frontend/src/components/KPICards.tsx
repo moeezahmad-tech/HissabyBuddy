@@ -51,6 +51,9 @@ export const KPICards: React.FC = () => {
         if (user?.token) {
           headers['Authorization'] = `Bearer ${user.token}`;
         }
+        if (user?.uid) {
+          headers['X-User-Id'] = user.uid;
+        }
         const res = await fetch(`${apiUrl}/api/dashboard/metrics`, { headers });
         if (res.ok && !isCancelled) {
           const data = await res.json();
@@ -116,13 +119,13 @@ export const KPICards: React.FC = () => {
       icon: TrendingUp,
     },
     {
-      title: 'Net Monthly Savings',
+      title: 'Net Savings',
       value: formatCardValue(metrics.netSavings ?? (metrics.totalBalance > metrics.monthlySpend ? metrics.totalBalance - metrics.monthlySpend : 0)),
       change: metrics.savingsRate && metrics.savingsRate !== '0%' ? `${metrics.savingsRate} Saved` : 'Surplus',
       isPositive: (metrics.netSavings ?? 0) >= 0,
       subtitle: (metrics.totalIncome && metrics.totalIncome > 0)
         ? `Inflow: ${displaySymbol}${metrics.totalIncome.toLocaleString()} • Outflow: ${displaySymbol}${metrics.monthlySpend.toLocaleString()}`
-        : 'Net liquid surplus after monthly expenses',
+        : 'Liquid surplus after monthly expenses',
       icon: PiggyBank,
       highlight: true,
     },

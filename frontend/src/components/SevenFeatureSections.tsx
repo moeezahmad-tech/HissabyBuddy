@@ -496,41 +496,56 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
             <div className="lg:col-span-6 space-y-6">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-violet-500" />
-                <span>Feature 05 • Cloud Database Ledger</span>
+                <span>Feature 05 • Collaborative Shared Groups</span>
               </div>
               
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                Structured Transaction &amp; Budget Logging
+                Collaborative Shared Groups &amp; Budget Cap Settings
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
-                Save, categorize, and manage your income, budgets, and transaction histories directly in Firebase Firestore.
+                Save, split, and manage household bills, family grocery caps, or freelancer projects collaboratively. Includes automatic SMTP split notifications and temporary group creation.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <Receipt className="w-6 h-6 text-violet-600 mb-2" />
-                  <h4 className="text-sm font-bold text-[#012456]">Automated Categorization</h4>
+                  <h4 className="text-sm font-bold text-[#012456]">SQL &amp; SMTP Invites</h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Transactions are categorized into Income, Utilities, Subscriptions, and Operations automatically.
+                    Send secure invitations backed by PostgreSQL tokens. Recipients receive SMTP emails to join automatically upon sign-in.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <TrendingUp className="w-6 h-6 text-[#5391FE] mb-2" />
-                  <h4 className="text-sm font-bold text-[#012456]">Budget Thresholds</h4>
+                  <h4 className="text-sm font-bold text-[#012456]">Dynamic Budget Limits</h4>
                   <p className="text-xs text-slate-500 mt-1">
-                    Set spending limits per category and receive intelligent insights before you overspend.
+                    Set and update budget caps permanently or for specific months, keeping the entire team aligned on expenses.
                   </p>
                 </div>
               </div>
+
+              <ul className="space-y-2.5 pt-2 text-xs sm:text-sm text-slate-700 font-medium">
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Temporary Split groups for one-off friend hangouts/dinners</span>
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Automated email alerts notifying split shares on logged expenses</span>
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Interactive single-page settings dashboard for easy management</span>
+                </li>
+              </ul>
 
               <div className="pt-4">
                 <button
                   onClick={onOpenApp}
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer"
                 >
-                  <span>View Transaction Ledger</span>
+                  <span>Create Shared Group</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -540,26 +555,31 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
             <div className="lg:col-span-6">
               <div className="p-6 sm:p-8 rounded-3xl bg-slate-50 border border-slate-200 shadow-xl space-y-4">
                 <div className="flex justify-between items-center pb-3 border-b border-slate-200 text-xs font-bold text-[#012456]">
-                  <span>Live Firestore Ledger</span>
+                  <span>Live Group Splitting Ledger</span>
                   <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
-                    Cloud Synced
+                    SMTP Configured
                   </span>
                 </div>
 
                 <div className="space-y-2.5">
                   {[
-                    { name: 'Stripe SaaS Payout', cat: 'Revenue', amount: '+$3,450.00', isDebit: false },
-                    { name: 'Cloud Infrastructure Hosting', cat: 'Cloud', amount: '-$124.50', isDebit: true },
-                    { name: 'Office Workstation Lease', cat: 'Operations', amount: '-$310.00', isDebit: true }
+                    { name: 'Model Town Grocery Pool', cat: 'Family & Ration', amount: 'Rs 12,500.00', isTemp: false },
+                    { name: 'Friends Dinner Out', cat: 'Temporary Split', amount: 'Rs 4,800.00', isTemp: true },
+                    { name: 'Client SaaS Design', cat: 'Project Team', amount: 'Rs 85,000.00', isTemp: false }
                   ].map((tx, idx) => (
                     <div key={idx} className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
                       <div>
                         <p className="text-xs font-bold text-[#012456]">{tx.name}</p>
-                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded mr-1">
                           {tx.cat}
                         </span>
+                        {tx.isTemp && (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                            Temporary
+                          </span>
+                        )}
                       </div>
-                      <span className={`text-xs font-black ${tx.isDebit ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      <span className="text-xs font-black text-[#012456]">
                         {tx.amount}
                       </span>
                     </div>

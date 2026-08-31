@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Repeat, 
   Plus, 
@@ -86,6 +86,9 @@ export const RecurringMoneyView: React.FC = () => {
       const headers: Record<string, string> = {};
       if (user?.token) {
         headers['Authorization'] = `Bearer ${user.token}`;
+      }
+      if (user?.uid) {
+        headers['X-User-Id'] = user.uid;
       }
       const res = await fetch(`${apiUrl}/api/dashboard/recurring`, { headers });
       if (res.ok) {
@@ -222,8 +225,39 @@ export const RecurringMoneyView: React.FC = () => {
     }
   };
 
+  // Normalize items so amounts, isIncome, dueDay, and active status are always valid
+  const normalizedItems = useMemo(() => {
+    return items.map((i: any) => {
+      const isSalary = i.category === 'Salary & Income' || (i.name && i.name.toLowerCase().includes('salary'));
+      const isRentOrBill = (i.name && i.name.toLowerCase().includes('rent')) || i.category === 'Housing' || i.category === 'Utilities';
+      const isIncome = isSalary ? true : isRentOrBill ? false : (i.isIncome ?? (Number(i.amount) > 0));
+      const absAmount = Math.abs(Number(i.amount) || 0);
+      
+      // Resolve valid dueDay (1 - 31)
+      let dueDay = Number(i.dueDay);
+      if (!dueDay || isNaN(dueDay)) {
+        if (i.nextDueDate) {
+          const parsedDate = new Date(i.nextDueDate);
+          dueDay = !isNaN(parsedDate.getDate()) ? parsedDate.getDate() : 1;
+        } else {
+          dueDay = 1;
+        }
+      }
+
+      const isActive = i.isActive !== false && i.status !== 'inactive';
+
+      return {
+        ...i,
+        amount: absAmount,
+        isIncome,
+        dueDay,
+        isActive,
+      };
+    });
+  }, [items]);
+
   // Metrics Calculation
-  const activeItems = items.filter(i => i.isActive);
+  const activeItems = normalizedItems.filter(i => i.isActive);
   const totalMonthlyOutflow = activeItems
     .filter(i => !i.isIncome)
     .reduce((acc, curr) => acc + curr.amount, 0);
@@ -236,11 +270,12 @@ export const RecurringMoneyView: React.FC = () => {
 
   const currentDay = new Date().getDate();
   const upcomingIn7Days = activeItems.filter(i => {
-    const diff = i.dueDay - currentDay;
-    return diff >= 0 && diff <= 7;
+    let diff = i.dueDay - currentDay;
+    if (diff < 0) diff += 30;
+    return diff <= 7;
   });
 
-  const filteredItems = items.filter(i => {
+  const filteredItems = normalizedItems.filter(i => {
     if (filterTab === 'expense') return !i.isIncome;
     if (filterTab === 'income') return i.isIncome;
     return true;
@@ -274,13 +309,13 @@ export const RecurringMoneyView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 text-[#5391FE] text-xs font-bold uppercase tracking-wider mb-1">
             <Repeat className="w-4 h-4" />
-            <span>Fixed Cashflow &amp; Commitments</span>
+            <span>Fixed Commitments</span>
           </div>
           <h2 className="text-2xl font-black text-[#012456] tracking-tight">
-            Recurring Money Manager
+            Recurring Money
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Automate and track your fixed monthly obligations: Rent, Salary, Pocket Money, Utilities, and Subscriptions.
+            Track fixed monthly bills, rent, subscriptions, and salary.
           </p>
         </div>
 
@@ -456,7 +491,8 @@ export const RecurringMoneyView: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredItems.map((item) => {
-              const diffDays = item.dueDay - currentDay;
+              let diffDays = item.dueDay - currentDay;
+              if (diffDays < 0) diffDays += 30;
               const isDueToday = diffDays === 0;
               const isDueSoon = diffDays > 0 && diffDays <= 5;
               
@@ -502,7 +538,7 @@ export const RecurringMoneyView: React.FC = () => {
                             ? 'bg-amber-100 text-amber-800' 
                             : 'bg-slate-100 text-slate-600'
                       }`}>
-                        {isDueToday ? 'Due Today!' : isDueSoon ? `Due in ${diffDays} days` : `Due in ${diffDays < 0 ? 30 + diffDays : diffDays} days`}
+                        {isDueToday ? 'Due Today!' : `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}`}
                       </span>
                     </div>
                   </div>

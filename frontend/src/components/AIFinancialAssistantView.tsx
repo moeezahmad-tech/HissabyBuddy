@@ -285,19 +285,14 @@ export const AIFinancialAssistantView: React.FC = () => {
         <div>
           <h2 className="text-2xl font-black text-[#012456] tracking-tight flex items-center gap-2">
             <Bot className="w-6 h-6 text-[#5391FE]" />
-            AI Financial Chat Assistant
+            AI Assistant
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Ask questions about your budget, spending habits, or uploaded financial documents with real-time vector grounding.
+            Ask questions about your budget, spending, or uploaded documents.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Groq LPU 120B Vector RAG Active</span>
-          </div>
-        </div>
+
       </div>
 
       {/* Error Banner */}
@@ -320,7 +315,7 @@ export const AIFinancialAssistantView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* Left Column: Responsive Chat View */}
-        <div className="lg:col-span-8 xl:col-span-9 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col h-[640px] overflow-hidden">
+        <div className="lg:col-span-8 xl:col-span-9 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col h-[calc(100vh-14rem)] overflow-hidden">
           
           {/* Chat Messages Stream */}
           <div className="flex-1 p-6 overflow-y-auto space-y-4">

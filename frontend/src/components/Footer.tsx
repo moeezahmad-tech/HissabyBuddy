@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Shield, Cpu, Database } from 'lucide-react';
 
 export const Footer: React.FC = () => {
@@ -46,9 +47,9 @@ export const Footer: React.FC = () => {
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>&copy; 2026 Hissaby Buddy. All financial records secured with multi-tenant data isolation.</p>
           <div className="flex items-center gap-6">
-            <a href="#features" className="hover:text-[#5391FE] transition-colors font-medium">7 Core Features</a>
-            <a href="#interactive-demo" className="hover:text-[#5391FE] transition-colors font-medium">Interactive Demo</a>
-            <a href="#" className="hover:text-[#5391FE] transition-colors font-medium">Privacy Policy</a>
+            <Link to="/about" className="hover:text-[#5391FE] transition-colors font-medium">About Us</Link>
+            <Link to="/techkreative" className="hover:text-[#5391FE] transition-colors font-medium">Created By TechKreative</Link>
+            <Link to="/contact" className="hover:text-[#5391FE] transition-colors font-medium">Contact Support</Link>
           </div>
         </div>
       </div>

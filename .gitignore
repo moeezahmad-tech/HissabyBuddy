@@ -46,11 +46,14 @@ backend/share/python-wheels/
 backend/data/*.tmp
 backend/data/*.log
 *.log
+.agents/
+skills-lock.json
 
 # --- Environment files (NEVER commit secrets) ---
 .env
 .env.*
 !.env.example
+.neon
 backend/.env
 backend/.env.*
 !backend/.env.example

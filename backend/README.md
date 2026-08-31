@@ -67,12 +67,13 @@ ENVIRONMENT=development
 - `GET /` - Service status and features overview
 - `GET /health` - Health check validating Firebase, Groq, and Pinecone configuration
 
-### 2. Authentication (`/api/auth`)
-- `GET /api/auth/me` - Validates Bearer ID token and returns authenticated user claims
-- `GET /api/auth/status` - Firebase tenancy & isolation status
+### 2. Authentication & Profile (`/api/auth`)
+- `GET /api/auth/me` - Validates Bearer ID token and returns authenticated user claims and profile details from SQL.
+- `GET /api/auth/status` - Firebase tenancy & isolation status.
+- `PUT /api/auth/profile` - Updates display name, email, bio/about, and theme preferences inside Neon PostgreSQL.
 
 ### 3. AI Financial Copilot (`/api/chat`)
-- `POST /api/chat/ask` - Send financial prompts and optional RAG context to Groq AI
+- `POST /api/chat/ask` - Send financial prompts and optional RAG context to Groq AI.
 
 ```json
 // Request Body
@@ -89,10 +90,17 @@ ENVIRONMENT=development
 }
 ```
 
-### 4. Dashboard Analytics (`/api/dashboard`)
-- `GET /api/dashboard/metrics` - Total balance, monthly spending, and AI savings
-- `GET /api/dashboard/spending-trends` - Categorized expenditure and monthly velocity
-- `GET /api/dashboard/transactions` - Isolated transaction history
+### 4. Shared Teams & Groups (`/api/workspaces`)
+- `PUT /api/workspaces/{workspace_id}/budget-cap` - Update budget cap limit with mode: `permanent`, `current_month`, or `next_month`.
+- `GET /api/workspaces/{workspace_id}/invitations` - Fetch pending invitations for a workspace.
+- `POST /api/workspaces/{workspace_id}/invitations` - Issue invitation code to email and dispatch SMTP email notification.
+- `DELETE /api/workspaces/invitations/{invite_id}` - Cancel/delete pending invitation.
+- `POST /api/workspaces/invitations/{token}/accept` - Consume invitation token and join workspace as member.
+
+### 5. Dashboard Analytics (`/api/dashboard`)
+- `GET /api/dashboard/metrics` - Total balance, monthly spending, and AI savings.
+- `GET /api/dashboard/spending-trends` - Categorized expenditure and monthly velocity.
+- `GET /api/dashboard/transactions` - Isolated transaction history.
 
 ---
 

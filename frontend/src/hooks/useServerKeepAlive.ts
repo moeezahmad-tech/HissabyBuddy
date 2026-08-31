@@ -10,6 +10,12 @@ export const useServerKeepAlive = () => {
 
   const pingServer = async (isInitial = false) => {
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    
+    // Skip Render wake-up banner during local development
+    if (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1')) {
+      return;
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     if (isInitial) {

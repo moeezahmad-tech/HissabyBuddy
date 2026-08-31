@@ -42,6 +42,9 @@ export const SpendingTrendsChart: React.FC = () => {
         if (user?.token) {
           headers['Authorization'] = `Bearer ${user.token}`;
         }
+        if (user?.uid) {
+          headers['X-User-Id'] = user.uid;
+        }
         const res = await fetch(`${apiUrl}/api/dashboard/spending-trends`, { headers });
         if (res.ok) {
           const data = await res.json();
@@ -66,26 +69,26 @@ export const SpendingTrendsChart: React.FC = () => {
     : 1000;
 
   return (
-    <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xs transition-all duration-300">
+    <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xs h-full flex flex-col justify-between transition-all duration-300">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 text-[#5391FE] text-xs font-bold uppercase tracking-wider mb-1">
             <BarChart3 className="w-4 h-4" />
-            <span>Financial Analytics</span>
+            <span>Category Trends</span>
           </div>
           <h3 className="text-xl font-black text-[#012456] tracking-tight">
-            Spending Trends &amp; Velocity
+            Spending Trends
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Real-time multi-account category expenditure over time
+            Category breakdown over time
           </p>
         </div>
 
         {monthlyVelocity.length > 0 && (
           <div className="flex items-center gap-2">
-            {['All', ...(categories.map(c => c.category))].slice(0, 4).map((cat) => (
+            {['All', ...(categories.map(c => c.category))].slice(0, 4).map((cat, idx) => (
               <button
-                key={cat}
+                key={`cat-${cat}-${idx}`}
                 onClick={() => setActiveCategory(cat)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeCategory === cat
@@ -116,12 +119,12 @@ export const SpendingTrendsChart: React.FC = () => {
         <>
           {/* Bar Chart Visualization */}
           <div className="h-64 flex items-end justify-between gap-2 sm:gap-6 pt-6 border-b border-slate-200 pb-2">
-            {monthlyVelocity.map((item) => {
+            {monthlyVelocity.map((item, idx) => {
               const spendHeight = (item.spend / maxVal) * 100;
               const budgetHeight = (item.budget / maxVal) * 100;
 
               return (
-                <div key={item.month} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
+                <div key={`month-${item.month}-${idx}`} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                   <div className="w-full flex items-end justify-center gap-1.5 h-full">
                     {/* Spend Bar */}
                     <div
