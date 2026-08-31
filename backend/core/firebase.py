@@ -18,7 +18,23 @@ def init_firebase() -> bool:
     if _firebase_initialized:
         return True
 
-    # 1. Resolve credentials path
+    # 1. Try to initialize using FIREBASE_CREDENTIALS_JSON environment variable first
+    if settings.FIREBASE_CREDENTIALS_JSON:
+        try:
+            cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
+            cred = credentials.Certificate(cred_dict)
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app(cred, {
+                    'projectId': settings.FIREBASE_PROJECT_ID
+                })
+            _firebase_initialized = True
+            _db = firestore.client()
+            logger.info("Firebase Admin SDK initialized successfully using FIREBASE_CREDENTIALS_JSON env variable")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize Firebase Admin SDK using FIREBASE_CREDENTIALS_JSON: {e}")
+
+    # 2. Fallback to credentials path file
     cred_path = Path(settings.FIREBASE_CREDENTIALS_PATH)
     if not cred_path.is_absolute():
         # Resolve relative to backend folder
