@@ -149,9 +149,6 @@ export const teamService = {
         if (data && Array.isArray(data.workspaces)) {
           const defaultEmail = (userEmail && !userEmail.includes('@hissaby.local')) ? userEmail : 'you@hissaby.pk';
 
-          // Preserve any un-synced offline workspaces
-          const offlineOnly = local.filter((lw) => lw.id.startsWith('ws-') && !data.workspaces.some((rw: any) => rw.id === lw.id || rw.name === lw.name));
-
           // Merge backend workspaces with local models so members/budgets/spendings exist
           const mergedWorkspaces: Workspace[] = data.workspaces.map((rw: any) => {
             const match = local.find((lw) => lw.id === rw.id || lw.name === rw.name);
@@ -174,9 +171,8 @@ export const teamService = {
             };
           });
 
-          const finalWorkspaces = [...mergedWorkspaces, ...offlineOnly];
-          saveLocalWorkspaces(finalWorkspaces);
-          return finalWorkspaces;
+          saveLocalWorkspaces(mergedWorkspaces);
+          return mergedWorkspaces;
         }
       }
     } catch {
@@ -194,90 +190,50 @@ export const teamService = {
     const resolvedEmail = (userProfile?.email && !userProfile.email.includes('@hissaby.local')) ? userProfile.email : 'you@hissaby.pk';
     const resolvedName = 'You (Creator)';
 
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${apiUrl}/api/workspaces`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ...payload,
-          currency: payload.currency || 'PKR',
-          currency_symbol: payload.currency_symbol || 'Rs ',
-          creator_email: resolvedEmail,
-          creator_name: resolvedName,
-          is_temporary: payload.is_temporary || false,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.workspace) {
-          const current = getStoredLocalWorkspaces();
-          const existing = current.find(w => w.id === data.workspace.id || w.name === data.workspace.name);
-          const fullWs: Workspace = {
-            ...data.workspace,
-            members: existing?.members || [
-              {
-                id: 'm-' + data.workspace.id,
-                workspace_id: data.workspace.id,
-                user_id: 'usr_me',
-                role: 'owner',
-                display_name: resolvedName,
-                email: resolvedEmail,
-                total_spent: 0,
-                custom_title: resolvedName,
-              },
-            ],
-            budgets: existing?.budgets || [],
-            spendings: existing?.spendings || [],
-          };
-          saveLocalWorkspaces([...current.filter(w => w.id !== fullWs.id), fullWs]);
-          return fullWs;
-        }
-      } else if (res.status === 429) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Please wait a moment before creating another group.');
-      }
-    } catch (e: any) {
-      if (e.message && e.message.includes('Rate limit')) {
-        throw e;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${apiUrl}/api/workspaces`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ...payload,
+        currency: payload.currency || 'PKR',
+        currency_symbol: payload.currency_symbol || 'Rs ',
+        creator_email: resolvedEmail,
+        creator_name: resolvedName,
+        is_temporary: payload.is_temporary || false,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.workspace) {
+        const current = getStoredLocalWorkspaces();
+        const existing = current.find(w => w.id === data.workspace.id || w.name === data.workspace.name);
+        const fullWs: Workspace = {
+          ...data.workspace,
+          members: existing?.members || [
+            {
+              id: 'm-' + data.workspace.id,
+              workspace_id: data.workspace.id,
+              user_id: 'usr_me',
+              role: 'owner',
+              display_name: resolvedName,
+              email: resolvedEmail,
+              total_spent: 0,
+              custom_title: resolvedName,
+            },
+          ],
+          budgets: existing?.budgets || [],
+          spendings: existing?.spendings || [],
+        };
+        saveLocalWorkspaces([...current.filter(w => w.id !== fullWs.id), fullWs]);
+        return fullWs;
       }
     }
 
-    // Local creation
-    const current = getStoredLocalWorkspaces();
-    const newWs: Workspace = {
-      id: 'ws-' + Date.now(),
-      name: payload.name,
-      theme: payload.theme,
-      description: payload.description || '',
-      currency: payload.currency || 'PKR',
-      currency_symbol: payload.currency_symbol || 'Rs ',
-      color_code: payload.color_code || '#10B981',
-      icon_name: payload.icon_name || 'users',
-      role: 'owner',
-      member_count: 1,
-      total_budget: 0,
-      total_spent: 0,
-      budget_type: payload.budget_type || 'fixed',
-      theme_settings: payload.theme_settings,
-      members: [
-        {
-          id: 'm-' + Date.now(),
-          workspace_id: 'ws-' + Date.now(),
-          user_id: 'usr_me',
-          role: 'owner',
-          display_name: resolvedName,
-          email: resolvedEmail,
-          total_spent: 0,
-          custom_title: resolvedName,
-        },
-      ],
-      budgets: [],
-      spendings: [],
-    };
-    saveLocalWorkspaces([...current, newWs]);
-    return newWs;
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || `Failed to create group on server (HTTP ${res.status})`);
   },
 
   async addMember(

@@ -593,6 +593,10 @@ async def create_workspace_invitation(workspace_id: str, payload: InvitationCrea
 
             invite["id"] = str(invite["id"])
             return {"status": "success", "invitation": invite}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
     except Exception as e:
         if conn:
             conn.rollback()
