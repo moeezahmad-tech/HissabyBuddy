@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
 import { teamService } from '../services/teamService';
 import type { Workspace } from '../services/teamService';
 
@@ -29,9 +30,6 @@ function loadExpenseMode(wsId: string): ExpenseMode {
   } catch {}
   return 'equal_split';
 }
-function saveExpenseMode(wsId: string, mode: ExpenseMode) {
-  localStorage.setItem(`hissaby_expense_mode_${wsId}`, mode);
-}
 
 function getThemeBadge(theme?: string) {
   switch (theme) {
@@ -48,6 +46,7 @@ export const GroupSettingsPage: React.FC = () => {
   const wsId = searchParams.get('id') || '';
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
+  const toast = useToast();
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
     try { return teamService.getStoredWorkspaces(); } catch { return []; }
@@ -118,33 +117,39 @@ export const GroupSettingsPage: React.FC = () => {
   }, [currentWs?.members, user]);
 
   const members = useMemo(() => {
-    const raw = currentWs?.members || [];
-    if (raw.length > 0) return raw.map((m) => {
-      const isMe = m.user_id === user?.uid || (m.role === 'owner' && isOwner);
-      const name = isMe && user?.displayName ? user.displayName : (m.display_name || 'Member');
-      return {
-        ...m,
-        display_name: isMe ? `${name} (You)` : name,
-        email: isMe && user?.email && !user.email.includes('@hissaby.local')
-          ? user.email
-          : ((m.email && m.email !== 'you@hissaby.pk' && !m.email.includes('@hissaby.local')) ? m.email : defaultUserEmail),
-      };
-    });
-    const defaultName = user?.displayName || 'Creator';
-    return [{ id: 'm-me', workspace_id: wsId, user_id: user?.uid || 'usr_me', role: 'owner' as const, display_name: `${defaultName} (You)`, email: defaultUserEmail, custom_title: 'You (Creator)', total_spent: 0 }];
-  }, [currentWs?.members, wsId, user, defaultUserEmail, isOwner]);
+    const rawMembers = currentWs?.members || [];
+    if (rawMembers.length > 0) return rawMembers;
+    return [
+      {
+        id: 'mem_owner_default',
+        workspace_id: currentWs?.id || '',
+        user_id: user?.uid || 'usr_me',
+        role: 'owner' as const,
+        display_name: 'You (Creator)',
+        email: defaultUserEmail,
+        total_spent: 0,
+        custom_title: 'You (Creator)',
+      },
+    ];
+  }, [currentWs?.members, currentWs?.id, user?.uid, defaultUserEmail]);
 
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
+    toast.success(msg);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 
   // Handlers
   const handleExpenseModeChange = (mode: ExpenseMode) => {
+    if (!currentWs) return;
     setExpenseMode(mode);
-    if (currentWs?.id) saveExpenseMode(currentWs.id, mode);
-    showSuccess('Payment split mode updated successfully.');
+    try {
+      localStorage.setItem(`hissaby_expense_mode_${currentWs.id}`, mode);
+      showSuccess(`Settlement strategy updated to ${mode.replace('_', ' ').toUpperCase()}`);
+    } catch {
+      toast.error('Failed to save settlement settings.');
+    }
   };
 
   const handleUpdateBudgetCap = async (e: React.FormEvent) => {
@@ -172,7 +177,7 @@ export const GroupSettingsPage: React.FC = () => {
         });
       }
     } catch {
-      alert('Failed to update budget cap.');
+      toast.error('Failed to update budget cap.');
     } finally {
       setIsUpdatingBudget(false);
     }
@@ -194,7 +199,7 @@ export const GroupSettingsPage: React.FC = () => {
       setPendingInvites(prev => [updatedInvite, ...prev]);
       setInviteEmail('');
     } catch (err: any) {
-      alert(err.message || 'Failed to send invitation.');
+      toast.error(err.message || 'Failed to send invitation.');
     } finally {
       setIsInviting(false);
     }
@@ -207,7 +212,7 @@ export const GroupSettingsPage: React.FC = () => {
       setPendingInvites(prev => prev.filter(inv => inv.id !== id));
       showSuccess('Invitation cancelled successfully.');
     } catch {
-      alert('Failed to cancel invitation.');
+      toast.error('Failed to cancel invitation.');
     }
   };
 
@@ -220,7 +225,7 @@ export const GroupSettingsPage: React.FC = () => {
       const data = await teamService.getWorkspaces(user?.token, defaultUserEmail);
       if (data && data.length > 0) setWorkspaces(data);
     } catch (err: any) {
-      alert(err.message || 'Failed to update member role.');
+      toast.error(err.message || 'Failed to update member role.');
     } finally {
       setIsOperatingMember(false);
     }
@@ -236,7 +241,7 @@ export const GroupSettingsPage: React.FC = () => {
       const data = await teamService.getWorkspaces(user?.token, defaultUserEmail);
       if (data && data.length > 0) setWorkspaces(data);
     } catch (err: any) {
-      alert(err.message || 'Failed to remove member.');
+      toast.error(err.message || 'Failed to remove member.');
     } finally {
       setIsOperatingMember(false);
     }
@@ -248,9 +253,10 @@ export const GroupSettingsPage: React.FC = () => {
     setIsLeaving(true);
     try {
       await teamService.leaveWorkspace(currentWs.id, user?.token);
+      toast.success('You have left the group.');
       navigate('/dashboard/teams', { replace: true });
     } catch (err: any) {
-      alert(err.message || 'Failed to leave group.');
+      toast.error(err.message || 'Failed to leave group.');
     } finally {
       setIsLeaving(false);
     }
@@ -261,9 +267,10 @@ export const GroupSettingsPage: React.FC = () => {
     setIsDeleting(true);
     try {
       await teamService.deleteWorkspace(currentWs.id, user?.token);
+      toast.success(`Group "${currentWs.name}" deleted successfully.`);
       navigate('/dashboard/teams', { replace: true });
     } catch (err: any) {
-      alert(err.message || 'Failed to delete workspace.');
+      toast.error(err.message || 'Failed to delete workspace.');
       navigate('/dashboard/teams', { replace: true });
     } finally {
       setIsDeleting(false);

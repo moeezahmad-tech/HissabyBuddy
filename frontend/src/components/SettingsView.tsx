@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, User, CheckCircle2, LogOut, RefreshCw, Sun, Moon, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 export const SettingsView: React.FC = () => {
   const { user, signInWithGoogle, signOut, updateUserLocal } = useAuth();
+  const toast = useToast();
 
   // Profile Form State
   const [displayName, setDisplayName] = useState(user?.displayName || 'User');
@@ -66,10 +68,11 @@ export const SettingsView: React.FC = () => {
         await updateUserLocal(displayName.trim(), email.trim() || undefined);
 
         setSaveSuccess('Profile preferences updated in the database and local session!');
+        toast.success('Profile settings updated successfully!');
         setTimeout(() => setSaveSuccess(null), 4000);
       }
     } catch {
-      alert('Failed to save profile settings.');
+      toast.error('Failed to save profile settings.');
     } finally {
       setIsSaving(false);
     }

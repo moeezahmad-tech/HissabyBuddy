@@ -15,6 +15,7 @@ import DocumentUploadView from './components/DocumentUploadView';
 import SettingsView from './components/SettingsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CurrencyProvider } from './context/CurrencyContext';
+import { ToastProvider } from './context/ToastContext';
 import { useServerKeepAlive } from './hooks/useServerKeepAlive';
 import { Sparkles, RefreshCw } from 'lucide-react';
 
@@ -74,56 +75,58 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <CurrencyProvider>
-        {/* Render Cloud Wakeup Banner */}
-        {isWakingUp && (
-          <div className="fixed bottom-5 right-5 z-50 bg-[#012456] text-white px-4 py-3 rounded-2xl shadow-2xl border border-blue-400/30 flex items-center gap-3 animate-fadeIn text-xs">
-            <RefreshCw className="w-4 h-4 text-[#5391FE] animate-spin shrink-0" />
-            <div>
-              <p className="font-bold flex items-center gap-1.5">
-                <span>Waking up cloud backend...</span>
-                <Sparkles className="w-3 h-3 text-[#5391FE]" />
-              </p>
-              <p className="text-[10px] text-slate-300">
-                Render server is spinning up. Ready in ~30 seconds!
-              </p>
+        <ToastProvider>
+          {/* Render Cloud Wakeup Banner */}
+          {isWakingUp && (
+            <div className="fixed bottom-5 right-5 z-50 bg-[#012456] text-white px-4 py-3 rounded-2xl shadow-2xl border border-blue-400/30 flex items-center gap-3 animate-fadeIn text-xs">
+              <RefreshCw className="w-4 h-4 text-[#5391FE] animate-spin shrink-0" />
+              <div>
+                <p className="font-bold flex items-center gap-1.5">
+                  <span>Waking up cloud backend...</span>
+                  <Sparkles className="w-3 h-3 text-[#5391FE]" />
+                </p>
+                <p className="text-[10px] text-slate-300">
+                  Render server is spinning up. Ready in ~30 seconds!
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/techkreative" element={<TechKreativePage />} />
-            <Route path="/contact" element={<ContactPage />} />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/techkreative" element={<TechKreativePage />} />
+              <Route path="/contact" element={<ContactPage />} />
 
-            {/* Protected Sidebar Routes nested under /dashboard */}
-            <Route path="/dashboard" element={<ProtectedDashboardLayout />}>
-              <Route index element={<DashboardView />} />
-              <Route path="teams" element={<TeamsGroupsView />} />
-              <Route path="teams/create" element={<CreateGroupWizard />} />
-              <Route path="teams/settings" element={<GroupSettingsPage />} />
-              <Route path="loans" element={<LoansView />} />
-              <Route path="recurring" element={<RecurringMoneyView />} />
-              <Route path="assistant" element={<AIFinancialAssistantView />} />
-              <Route path="upload" element={<DocumentUploadView />} />
-              <Route path="settings" element={<SettingsView />} />
-            </Route>
+              {/* Protected Sidebar Routes nested under /dashboard */}
+              <Route path="/dashboard" element={<ProtectedDashboardLayout />}>
+                <Route index element={<DashboardView />} />
+                <Route path="teams" element={<TeamsGroupsView />} />
+                <Route path="teams/create" element={<CreateGroupWizard />} />
+                <Route path="teams/settings" element={<GroupSettingsPage />} />
+                <Route path="loans" element={<LoansView />} />
+                <Route path="recurring" element={<RecurringMoneyView />} />
+                <Route path="assistant" element={<AIFinancialAssistantView />} />
+                <Route path="upload" element={<DocumentUploadView />} />
+                <Route path="settings" element={<SettingsView />} />
+              </Route>
 
-            {/* Shorthand alias routes for direct URL navigation */}
-            <Route path="/teams/create" element={<Navigate to="/dashboard/teams/create" replace />} />
-            <Route path="/teams" element={<Navigate to="/dashboard/teams" replace />} />
-            <Route path="/loans" element={<Navigate to="/dashboard/loans" replace />} />
-            <Route path="/recurring" element={<Navigate to="/dashboard/recurring" replace />} />
-            <Route path="/assistant" element={<Navigate to="/dashboard/assistant" replace />} />
-            <Route path="/upload" element={<Navigate to="/dashboard/upload" replace />} />
-            <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+              {/* Shorthand alias routes for direct URL navigation */}
+              <Route path="/teams/create" element={<Navigate to="/dashboard/teams/create" replace />} />
+              <Route path="/teams" element={<Navigate to="/dashboard/teams" replace />} />
+              <Route path="/loans" element={<Navigate to="/dashboard/loans" replace />} />
+              <Route path="/recurring" element={<Navigate to="/dashboard/recurring" replace />} />
+              <Route path="/assistant" element={<Navigate to="/dashboard/assistant" replace />} />
+              <Route path="/upload" element={<Navigate to="/dashboard/upload" replace />} />
+              <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
-            {/* Fallback route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+              {/* Fallback route */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
       </CurrencyProvider>
     </AuthProvider>
   );

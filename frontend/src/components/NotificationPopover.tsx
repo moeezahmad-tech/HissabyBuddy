@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, CheckCheck, Sparkles, Receipt, Coins, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 interface NotificationItem {
   id: string;
@@ -33,6 +34,7 @@ function saveStoredReadIds(ids: Set<string>): void {
 
 export const NotificationPopover: React.FC = () => {
   const { user } = useAuth();
+  const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -120,12 +122,13 @@ export const NotificationPopover: React.FC = () => {
         localStorage.removeItem('hissaby_cached_workspaces');
         markSingleAsRead(notifId);
         setIsOpen(false);
+        toast.success('Successfully joined the group!');
         window.location.href = '/dashboard/teams';
       } else {
-        alert(data.detail || data.error || 'Failed to accept invitation.');
+        toast.error(data.detail || data.error || 'Failed to accept invitation.');
       }
     } catch (err: any) {
-      alert(err?.message || 'Failed to accept invitation.');
+      toast.error(err?.message || 'Failed to accept invitation.');
     } finally {
       setJoiningToken(null);
     }

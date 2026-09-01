@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
 import { teamService } from '../services/teamService';
 import type { Workspace } from '../services/teamService';
 
@@ -80,6 +81,7 @@ export const TeamsGroupsView: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
+  const toast = useToast();
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
     try { return teamService.getStoredWorkspaces(); } catch { return []; }
@@ -276,6 +278,7 @@ export const TeamsGroupsView: React.FC = () => {
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const showSuccess = (msg: string) => {
     setActionSuccessMsg(msg);
+    toast.success(msg);
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
@@ -296,7 +299,7 @@ export const TeamsGroupsView: React.FC = () => {
       showSuccess(`Payment reminder notifications dispatched for ${res.dispatched_count || payload.length} member(s)!`);
       setIsNotifyModalOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Failed to dispatch notifications.');
+      toast.error(err.message || 'Failed to dispatch notifications.');
     } finally {
       setIsSendingNotifications(false);
     }
@@ -369,7 +372,7 @@ export const TeamsGroupsView: React.FC = () => {
       setDeleteConfirmText('');
       showSuccess(`Group "${targetWs.name}" deleted successfully.`);
     } catch (err: any) {
-      alert(err.message || 'Failed to delete group.');
+      toast.error(err.message || 'Failed to delete group.');
     } finally {
       setIsDeleting(false);
     }
@@ -443,7 +446,7 @@ export const TeamsGroupsView: React.FC = () => {
       setNewExpenseForm({ amount: '', category: 'Groceries', description: '', payer_id: '' });
       showSuccess('Expense logged and dashboard totals updated!');
     } catch (err: any) {
-      alert(err.message || 'Failed to log expense');
+      toast.error(err.message || 'Failed to log expense');
     } finally {
       setIsAddingExpense(false);
     }
