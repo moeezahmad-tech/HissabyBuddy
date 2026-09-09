@@ -69,16 +69,11 @@ def register_document_financials(
         user_account_balances[uid] = max(user_account_balances.get(uid, 0.0), balance)
 
     for tx in transactions:
-        # If this document source already exists, replace it to ensure fresh 100% accurate totals
-        user_transaction_store[uid] = [
-            existing for existing in user_transaction_store[uid]
-            if existing.get("source") != filename
-        ]
         tx_curr = tx.get("currency") or currency or "PKR"
         tx_sym = tx.get("currencySymbol") or currency_symbol or "Rs "
         amount_val = float(tx.get("amountValue") or balance or 0.0)
-        user_transaction_store[uid].insert(0, {
-            "id": tx.get("id", f"TX-{len(user_transaction_store[uid]) + 1:04d}"),
+        is_credit = bool(tx.get("isCredit"))
+        storage_service.add_transaction(uid, {
             "name": tx.get("description") or tx.get("name") or "Statement Item",
             "payee": tx.get("payee", "Payee"),
             "recipient": tx.get("recipient"),
@@ -87,30 +82,55 @@ def register_document_financials(
             "currency": tx_curr,
             "currencySymbol": tx_sym,
             "category": tx.get("category") or "Invoices & Bills",
-            "amount": amount_val if tx.get("isCredit") else -abs(amount_val),
+            "amount": amount_val if is_credit else -abs(amount_val),
             "date": tx.get("date") or datetime.now().strftime("%d %b %Y"),
             "status": "Verified via OCR",
             "source": filename,
             "lineItems": tx.get("lineItems", []),
-            "itemsCount": tx.get("itemsCount", 0)
+            "itemsCount": tx.get("itemsCount", 0),
+            "type": "income" if is_credit else "expense"
         })
     storage_service.save()
+    invalidate_user_cache(uid)
+
+_metrics_cache: Dict[str, Any] = {}
+_transactions_cache: Dict[str, Any] = {}
+_trends_cache: Dict[str, Any] = {}
+_recurring_cache: Dict[str, Any] = {}
+
+def invalidate_user_cache(uid: str):
+    """Evict all cached ledger, metrics, and trends for user to guarantee real-time accuracy."""
+    _metrics_cache.pop(uid, None)
+    _transactions_cache.pop(uid, None)
+    _trends_cache.pop(uid, None)
+    _recurring_cache.pop(uid, None)
+    for k in list(_notifs_cache.keys()):
+        if k.startswith(f"{uid}_"):
+            _notifs_cache.pop(k, None)
 
 @router.get("/metrics")
-async def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
-    """Return live KPI summary cards scoped to the authenticated user."""
+def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return live KPI summary cards with sub-millisecond memory caching."""
+    import time
     uid = user.get("uid", "anonymous")
-    user_txs = user_transaction_store.get(uid, [])
+    now_ts = time.time()
+
+    # Fast cache return if valid (< 30s)
+    if uid in _metrics_cache and (now_ts - _metrics_cache[uid].get("ts", 0)) < 30:
+        return _metrics_cache[uid]["data"]
+
+    # Reuse cached transactions if available to eliminate duplicate DB hit
+    if uid in _transactions_cache and (now_ts - _transactions_cache[uid].get("ts", 0)) < 30:
+        user_txs = _transactions_cache[uid]["data"].get("transactions", [])
+    else:
+        user_txs = user_transaction_store.get(uid, [])
+        _transactions_cache[uid] = {"ts": now_ts, "data": {"userId": uid, "transactions": user_txs}}
     
     # Calculate live spend and total budget:
-    # 1. Total monthly spend (expenses)
     monthly_spend = sum(abs(tx["amount"]) for tx in user_txs if tx["amount"] < 0)
     income_sum = sum(tx["amount"] for tx in user_txs if tx["amount"] > 0)
     base_balance = user_account_balances.get(uid, 0.0)
 
-    # 2. Total Budget / Balance:
-    # If user has logged salary/income, balance is income - spend.
-    # If user has scanned invoices/receipts, total budget tracks the verified invoice volume (e.g. 7000 PKR).
     if income_sum > 0:
         total_balance = max(income_sum - monthly_spend, 0.0)
     elif base_balance > 0:
@@ -120,16 +140,14 @@ async def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
     else:
         total_balance = 0.0
 
-    # Calculate Net Savings and recurring obligations
     net_savings = round(income_sum - monthly_spend, 2) if income_sum > 0 else 0.0
     savings_rate = f"{round((net_savings / income_sum) * 100)}%" if income_sum > 0 else "0%"
     
-    # Calculate Recurring commitments (Rent, Pocket money, Utility bills)
+    # Recurring commitments (Rent, Pocket money, Utility bills)
     rec_items = storage_service.get_recurring(uid)
     recurring_commitments = sum(i.get("amount", 0.0) for i in rec_items if not i.get("isIncome") and i.get("isActive", True))
     recurring_inflow = sum(i.get("amount", 0.0) for i in rec_items if i.get("isIncome") and i.get("isActive", True))
 
-    # Determine extracted currency
     curr_tup = storage_service.get_currency(uid)
     active_currency = curr_tup[0] or "PKR"
     active_symbol = curr_tup[1] or "Rs "
@@ -137,7 +155,7 @@ async def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
         active_currency = user_txs[0].get("currency", "PKR")
         active_symbol = user_txs[0].get("currencySymbol", "Rs ")
 
-    return {
+    result = {
         "userId": uid,
         "totalBalance": total_balance,
         "balanceChange": "+0.0%" if not user_txs else "+4.8%",
@@ -153,12 +171,24 @@ async def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
         "currency": active_currency,
         "currencySymbol": active_symbol
     }
+    _metrics_cache[uid] = {"ts": now_ts, "data": result}
+    return result
 
 @router.get("/spending-trends")
-async def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
-    """Return category distribution and day-wise velocity aggregates."""
+def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return category distribution and day-wise velocity aggregates with caching."""
+    import time
     uid = user.get("uid", "anonymous")
-    user_txs = user_transaction_store.get(uid, [])
+    now_ts = time.time()
+
+    if uid in _trends_cache and (now_ts - _trends_cache[uid].get("ts", 0)) < 30:
+        return _trends_cache[uid]["data"]
+
+    if uid in _transactions_cache and (now_ts - _transactions_cache[uid].get("ts", 0)) < 30:
+        user_txs = _transactions_cache[uid]["data"].get("transactions", [])
+    else:
+        user_txs = user_transaction_store.get(uid, [])
+        _transactions_cache[uid] = {"ts": now_ts, "data": {"userId": uid, "transactions": user_txs}}
 
     # 1. Calculate category breakdown
     category_map: Dict[str, float] = {}
@@ -177,8 +207,8 @@ async def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
     days_map: Dict[str, Dict[str, float]] = {}
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
-        day_label = d.strftime("%a")      # "Mon", "Tue"
-        date_label = d.strftime("%d %b")  # "21 Feb"
+        day_label = d.strftime("%a")
+        date_label = d.strftime("%d %b")
         days_map[date_label] = {"day": day_label, "date": date_label, "spend": 0.0, "income": 0.0}
 
     for tx in user_txs:
@@ -190,7 +220,6 @@ async def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
                 matched_key = k
                 break
         
-        # If not matching exactly, attribute to the latest/current day
         if not matched_key:
             matched_key = list(days_map.keys())[-1]
 
@@ -200,9 +229,8 @@ async def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
             days_map[matched_key]["income"] += amt
 
     daily_velocity = list(days_map.values())
-
     curr, sym = storage_service.get_currency(uid)
-    return {
+    result = {
         "userId": uid,
         "categories": categories,
         "monthlyVelocity": categories,
@@ -210,28 +238,36 @@ async def get_spending_trends(user: Dict[str, Any] = Depends(get_current_user)):
         "currency": curr,
         "currencySymbol": sym
     }
+    _trends_cache[uid] = {"ts": now_ts, "data": result}
+    return result
 
 @router.get("/transactions")
-async def get_transactions(user: Dict[str, Any] = Depends(get_current_user)):
-    """Return user's isolated Firestore transaction ledger records."""
+def get_transactions(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return user's isolated transaction ledger records with instant memory caching."""
+    import time
     uid = user.get("uid", "anonymous")
+    now_ts = time.time()
+
+    if uid in _transactions_cache and (now_ts - _transactions_cache[uid].get("ts", 0)) < 30:
+        return _transactions_cache[uid]["data"]
+
     user_txs = user_transaction_store.get(uid, [])
-    return {
+    result = {
         "userId": uid,
         "transactions": user_txs
     }
+    _transactions_cache[uid] = {"ts": now_ts, "data": result}
+    return result
 
 @router.post("/add-manual-transaction")
-async def add_manual_transaction(
+def add_manual_transaction(
     req: ManualTransactionRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Log manual income (Salary, Freelance, Deposit) or expense (Purchase, Utility, Bill).
+    Log manual income (Client payment, Business revenue, Freelance, Deposit) or expense (Purchase, Utility, Bill).
     """
     uid = user.get("uid", "anonymous")
-    if uid not in user_transaction_store:
-        user_transaction_store[uid] = []
 
     user_curr = req.currency or user_preferred_currency.get(uid, "PKR")
     user_sym = req.currencySymbol or user_preferred_symbol.get(uid, "Rs ")
@@ -242,30 +278,31 @@ async def add_manual_transaction(
     tx_date = req.date or datetime.now().strftime("%d %b %Y")
 
     new_tx = {
-        "id": f"TX-MAN-{len(user_transaction_store[uid]) + 1:04d}",
         "name": req.name,
         "category": req.category,
-        "payee": req.payee or ("Employer / Client" if req.isCredit else "Vendor"),
-        "purpose": req.purpose or ("Monthly Salary / Income" if req.isCredit else "Manual Purchase"),
+        "payee": req.payee or ("Client / Payer" if req.isCredit else "Vendor"),
+        "purpose": req.purpose or ("Income / Inflow" if req.isCredit else "Manual Expense"),
         "currency": user_curr,
         "currencySymbol": user_sym,
         "amount": actual_amount,
         "date": tx_date,
         "status": "Verified Entry",
-        "source": "Manual Entry"
+        "source": "Manual Entry",
+        "type": "income" if req.isCredit else "expense"
     }
 
-    user_transaction_store[uid].insert(0, new_tx)
+    saved_tx = storage_service.add_transaction(uid, new_tx)
     
     # Update balance
     if req.isCredit:
-        user_account_balances[uid] = user_account_balances.get(uid, 0.0) + req.amount
+        storage_service.set_balance(uid, storage_service.get_balance(uid) + req.amount)
     storage_service.save()
+    invalidate_user_cache(uid)
 
     return {
         "status": "success",
         "message": f"Successfully recorded {req.name} ({user_sym}{abs(req.amount):,.2f}) into financial ledger.",
-        "transaction": new_tx
+        "transaction": saved_tx or new_tx
     }
 
 @router.post("/log-natural-language")
@@ -274,7 +311,7 @@ async def log_natural_language(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Parse natural text like 'I received 150000 salary from Acme' or 'Spent 3200 on groceries'
+    Parse natural text like 'I received 150000 payment from Client' or 'Spent 3200 on groceries'
     using Groq AI and automatically log into user financial ledger.
     """
     uid = user.get("uid", "anonymous")
@@ -286,23 +323,23 @@ async def log_natural_language(
 User input: "{req.text}"
 
 Extract:
-- 'name': Brief concise description (e.g. "Monthly Salary", "Grocery Shopping", "Electricity Bill")
+- 'name': Brief concise description (e.g. "Client Payment", "Grocery Shopping", "Electricity Bill")
 - 'amount': Numeric amount as positive float (e.g. 150000.0, 3200.0)
-- 'isCredit': true if this is money received/earned/salary/income/deposit; false if spent/expense/bill/payment
-- 'category': Appropriate category (e.g. "Salary & Income", "Food & Groceries", "Utilities & Bills", "Rent & Housing", "Shopping", "Healthcare", "Transportation")
-- 'payee': Person or company involved (e.g. employer name, grocery store, or "Personal")
+- 'isCredit': true if this is money received/earned/income/deposit; false if spent/expense/bill/payment
+- 'category': Appropriate category (e.g. "Income & Earnings", "Business Revenue", "Food & Groceries", "Utilities & Bills", "Rent & Housing", "Shopping", "Healthcare", "Transportation")
+- 'payee': Person or company involved (e.g. client name, grocery store, or "Personal")
 - 'purpose': Short summary of for what this transaction is
 - 'currency': "PKR" | "USD" | "EUR" | "GBP" | "AED" | "SAR" | "INR" (Default to PKR unless specified)
 - 'currencySymbol': "Rs " | "$" | "€" | "£" | "AED " | "SAR " | "₹"
 
 Return strictly valid JSON:
 {{
-  "name": "Monthly Salary",
+  "name": "Client Payment",
   "amount": 150000.0,
   "isCredit": true,
-  "category": "Salary & Income",
-  "payee": "Employer / Company",
-  "purpose": "Monthly Salary Deposit",
+  "category": "Income & Earnings",
+  "payee": "Client / Company",
+  "purpose": "Project Payment Deposit",
   "currency": "PKR",
   "currencySymbol": "Rs "
 }}
@@ -325,15 +362,11 @@ Return strictly valid JSON:
         curr = parsed.get("currency", user_preferred_currency.get(uid, "PKR"))
         sym = parsed.get("currencySymbol", user_preferred_symbol.get(uid, "Rs "))
 
-        if uid not in user_transaction_store:
-            user_transaction_store[uid] = []
-
         user_preferred_currency[uid] = curr
         user_preferred_symbol[uid] = sym
 
         actual_amt = amt if is_credit else -abs(amt)
         new_tx = {
-            "id": f"TX-AI-{len(user_transaction_store[uid]) + 1:04d}",
             "name": name,
             "category": category,
             "payee": payee,
@@ -343,41 +376,63 @@ Return strictly valid JSON:
             "amount": actual_amt,
             "date": datetime.now().strftime("%d %b %Y"),
             "status": "AI Logged",
-            "source": "Natural Language Entry"
+            "source": "Natural Language Entry",
+            "type": "income" if is_credit else "expense"
         }
 
-        user_transaction_store[uid].insert(0, new_tx)
+        saved_tx = storage_service.add_transaction(uid, new_tx)
         
         if is_credit:
-            user_account_balances[uid] = user_account_balances.get(uid, 0.0) + amt
+            storage_service.set_balance(uid, storage_service.get_balance(uid) + amt)
         storage_service.save()
+        invalidate_user_cache(uid)
 
         return {
             "status": "success",
             "message": f"AI parsed and logged: {name} ({sym}{amt:,.2f}) under {category}.",
-            "transaction": new_tx
+            "transaction": saved_tx or new_tx
         }
     except Exception as e:
         logger.error(f"Natural language logging failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to parse transaction: {str(e)}")
 
+_notifs_cache: Dict[str, Any] = {}
+
 @router.get("/notifications")
-async def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user)):
-    """Return live alerts, invoice confirmations, and budget notifications."""
+def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return live alerts, invoice confirmations, and budget notifications with instant caching."""
+    import time
     uid = user.get("uid", "anonymous")
-    user_txs = user_transaction_store.get(uid, [])
-    curr = user_preferred_currency.get(uid, "PKR")
-    sym = user_preferred_symbol.get(uid, "Rs ")
-    user_email = user.get("email")
+    user_email = user.get("email", "")
+    cache_key = f"{uid}_{user_email}"
+
+    # Return cached response if within 30 seconds TTL
+    now_ts = time.time()
+    if cache_key in _notifs_cache and (now_ts - _notifs_cache[cache_key].get("ts", 0)) < 30:
+        return _notifs_cache[cache_key]["data"]
 
     notifications = []
-    
-    # 1. Fetch pending workspace invitations from Neon database
-    if user_email and "@hissaby.local" not in user_email:
+    rows_invites = []
+    rows_txs = []
+    curr = "PKR"
+    sym = "Rs "
+
+    conn = None
+    try:
         conn = storage_service.get_conn()
-        try:
-            from psycopg2.extras import RealDictCursor
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        from psycopg2.extras import RealDictCursor
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET statement_timeout = '2000ms';")
+
+            # 1. Fetch user currency in single query
+            cur.execute("SELECT default_currency, currency_symbol FROM users WHERE id = %s LIMIT 1;", (uid,))
+            u_row = cur.fetchone()
+            if u_row:
+                curr = u_row.get("default_currency") or "PKR"
+                sym = u_row.get("currency_symbol") or "Rs "
+
+            # 2. Fetch pending workspace invitations
+            if user_email and "@hissaby.local" not in user_email:
                 cur.execute("""
                     SELECT i.invite_token, i.invited_email, w.name as workspace_name, u.display_name as inviter_name
                     FROM workspace_invitations i
@@ -385,34 +440,58 @@ async def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user
                     LEFT JOIN users u ON i.invited_by = u.id
                     WHERE i.invited_email = %s AND i.status = 'pending';
                 """, (user_email.strip().lower(),))
-                rows = cur.fetchall()
-                for row in rows:
-                    notifications.append({
-                        "id": f"notif-invite-{row['invite_token']}",
-                        "title": "Group Invitation Received 👥",
-                        "message": f"{row['inviter_name'] or 'A Friend'} has invited you to join the shared group '{row['workspace_name']}'.",
-                        "time": "Pending Action",
-                        "unread": True,
-                        "type": "invite",
-                        "token": row['invite_token']
-                    })
-        except Exception as db_err:
-            logger.error(f"Failed to fetch invite notifications: {db_err}")
-        finally:
+                rows_invites = cur.fetchall() or []
+
+            # 3. Fetch top 3 transactions directly
+            cur.execute("""
+                SELECT id, description, amount, type, category, transaction_date, metadata
+                FROM transactions
+                WHERE user_id = %s OR user_id = 'guest_user'
+                ORDER BY transaction_date DESC, created_at DESC
+                LIMIT 3;
+            """, (uid,))
+            rows_txs = cur.fetchall() or []
+    except Exception as db_err:
+        logger.warning(f"Fast recovery: Failed to fetch notifications from DB: {db_err}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
             storage_service.put_conn(conn)
 
-    # 2. Recent Invoices/Statements
-    for tx in user_txs[:3]:
+    # Add workspace invitations
+    for row in rows_invites:
+        notifications.append({
+            "id": f"notif-invite-{row['invite_token']}",
+            "title": "Group Invitation Received 👥",
+            "message": f"{row['inviter_name'] or 'A Friend'} has invited you to join the shared group '{row['workspace_name']}'.",
+            "time": "Pending Action",
+            "unread": True,
+            "type": "invite",
+            "token": row['invite_token']
+        })
+
+    # Add top 3 transactions
+    for tx in rows_txs:
+        meta = tx.get("metadata") or {}
+        tx_name = tx.get("description") or meta.get("name", "Transaction")
+        raw_amt = float(tx.get("amount", 0.0))
+        tx_date = tx.get("transaction_date")
+        date_str = tx_date.strftime("%d %b %Y") if hasattr(tx_date, "strftime") else (str(tx_date) if tx_date else "Recently")
+
         notifications.append({
             "id": f"notif-{tx.get('id')}",
-            "title": f"Transaction Verified: {tx.get('name')}",
-            "message": f"{sym}{abs(tx.get('amount', 0)):,.2f} recorded under {tx.get('category')}.",
-            "time": tx.get("date") or "Recently",
+            "title": f"Transaction Verified: {tx_name}",
+            "message": f"{sym}{abs(raw_amt):,.2f} recorded under {tx.get('category') or 'General'}.",
+            "time": date_str,
             "unread": True,
             "type": "transaction"
         })
 
-    # 3. Default System Advisories
+    # Add Default System Advisories
     notifications.extend([
         {
             "id": "notif-system-1",
@@ -432,31 +511,42 @@ async def get_user_notifications(user: Dict[str, Any] = Depends(get_current_user
         }
     ])
 
-    return {
+    result = {
         "status": "success",
         "unreadCount": sum(1 for n in notifications if n.get("unread")),
         "notifications": notifications
     }
+
+    _notifs_cache[cache_key] = {"ts": now_ts, "data": result}
+    return result
 
 
 # -------------------------------------------------------------
 # RECURRING MONEY / FIXED COMMITMENTS (Rent, Salary, Pocket Money)
 # -------------------------------------------------------------
 @router.get("/recurring")
-async def get_recurring_items(user: Dict[str, Any] = Depends(get_current_user)):
-    """Return list of active and scheduled recurring income/expenses for the user."""
+def get_recurring_items(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return list of active and scheduled recurring income/expenses for the user with caching."""
+    import time
     uid = user.get("uid", "anonymous")
+    now_ts = time.time()
+
+    if uid in _recurring_cache and (now_ts - _recurring_cache[uid].get("ts", 0)) < 30:
+        return _recurring_cache[uid]["data"]
+
     items = storage_service.get_recurring(uid)
     curr, sym = storage_service.get_currency(uid)
-    return {
+    result = {
         "userId": uid,
         "items": items,
         "currency": curr,
         "currencySymbol": sym
     }
+    _recurring_cache[uid] = {"ts": now_ts, "data": result}
+    return result
 
 @router.post("/recurring")
-async def add_recurring_item(
+def add_recurring_item(
     req: RecurringItemRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -479,6 +569,7 @@ async def add_recurring_item(
         "createdAt": datetime.now().strftime("%d %b %Y")
     }
     storage_service.add_recurring(uid, item)
+    invalidate_user_cache(uid)
     return {
         "status": "success",
         "message": f"Successfully scheduled {req.name} ({item['currencySymbol']}{item['amount']:,.2f}) as recurring {req.frequency}.",
@@ -486,7 +577,7 @@ async def add_recurring_item(
     }
 
 @router.put("/recurring/{item_id}")
-async def update_recurring_item(
+def update_recurring_item(
     item_id: str,
     req: RecurringItemRequest,
     user: Dict[str, Any] = Depends(get_current_user)
@@ -504,10 +595,11 @@ async def update_recurring_item(
     updated = storage_service.update_recurring(uid, item_id, updates)
     if not updated:
         raise HTTPException(status_code=404, detail="Recurring commitment not found.")
+    invalidate_user_cache(uid)
     return {"status": "success", "item": updated}
 
 @router.delete("/recurring/{item_id}")
-async def delete_recurring_item(
+def delete_recurring_item(
     item_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -516,10 +608,11 @@ async def delete_recurring_item(
     success = storage_service.delete_recurring(uid, item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Recurring commitment not found.")
+    invalidate_user_cache(uid)
     return {"status": "success", "deletedId": item_id}
 
 @router.post("/recurring/{item_id}/post")
-async def post_recurring_to_ledger(
+def post_recurring_to_ledger(
     item_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
@@ -552,6 +645,8 @@ async def post_recurring_to_ledger(
         storage_service.set_balance(uid, storage_service.get_balance(uid) + target["amount"])
     else:
         storage_service.set_balance(uid, max(storage_service.get_balance(uid) - target["amount"], 0.0))
+
+    invalidate_user_cache(uid)
 
     return {
         "status": "success",

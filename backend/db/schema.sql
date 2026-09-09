@@ -403,5 +403,5 @@ VALUES ('guest_user', 'guest@hissaby.local', 'Guest User', 'PKR', 'Rs ')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO user_settings (user_id, monthly_budget_goal, dark_mode)
-VALUES ('guest_user', 50000.00, TRUE)
+VALUES ('guest_user', 0.00, TRUE)
 ON CONFLICT (user_id) DO NOTHING;

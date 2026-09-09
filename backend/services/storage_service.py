@@ -51,6 +51,10 @@ class PostgresStorageService:
         if not uid:
             uid = "guest_user"
         
+        # Fast exit if user has already been verified/ensured in memory
+        if uid in self._ensured_users and not email and not display_name:
+            return False
+
         display_email = email or f"{uid}@hissaby.local"
         display_n = display_name or ("User" if uid != "guest_user" else "Guest User")
 
@@ -64,9 +68,10 @@ class PostgresStorageService:
 
         cursor.execute("""
             INSERT INTO user_settings (user_id, monthly_budget_goal, dark_mode)
-            VALUES (%s, 50000.00, TRUE)
+            VALUES (%s, 0.00, TRUE)
             ON CONFLICT (user_id) DO NOTHING;
         """, (uid,))
+        self._ensured_users.add(uid)
         return True
 
     # --------------------------------------------------------------------------
@@ -1189,6 +1194,23 @@ d_type, description, options
             if res is None:
                 raise KeyError(uid)
             return res
+
+        def __setitem__(self, uid, val):
+            try:
+                if self.entity_name == "currencies":
+                    _, sym = self.service.get_currency(uid)
+                    self.service.set_currency(uid, str(val), sym)
+                elif self.entity_name == "symbols":
+                    curr, _ = self.service.get_currency(uid)
+                    self.service.set_currency(uid, curr, str(val))
+                elif self.entity_name == "balances":
+                    self.service.set_balance(uid, float(val or 0.0))
+                elif self.entity_name == "transactions":
+                    pass
+                elif self.entity_name == "documents":
+                    pass
+            except Exception as e:
+                logger.error(f"Error setting {self.entity_name} for {uid}: {e}")
 
         def __contains__(self, uid):
             return True

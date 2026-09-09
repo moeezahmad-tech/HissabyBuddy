@@ -16,13 +16,15 @@ async def get_current_user(
     verifies it against Firebase Auth, and yields claims with strict data tenancy.
     """
     client_uid = request.headers.get("x-user-id") or request.headers.get("X-User-Id")
+    client_email = request.headers.get("x-user-email") or request.headers.get("X-User-Email")
+    client_name = request.headers.get("x-user-name") or request.headers.get("X-User-Name")
 
     if not credentials:
         if client_uid:
             return {
                 "uid": client_uid,
-                "email": f"{client_uid}@hissaby.local",
-                "name": "Authenticated User",
+                "email": client_email or f"{client_uid}@hissaby.local",
+                "name": client_name or "Authenticated User",
                 "tier": "Verified",
                 "is_client_identified": True
             }
@@ -45,14 +47,18 @@ async def get_current_user(
     # 1. Verify with Firebase Admin SDK / decoded JWT claims
     decoded = verify_firebase_token(token)
     if decoded and decoded.get("uid"):
+        if client_email and (not decoded.get("email") or "@hissaby.local" in str(decoded.get("email", ""))):
+            decoded["email"] = client_email
+        if client_name and (not decoded.get("name") or decoded.get("name") in ["User", "Authenticated User"]):
+            decoded["name"] = client_name
         return decoded
 
     # 2. If client supplied explicit verified UID header, honor it
     if client_uid:
         return {
             "uid": client_uid,
-            "email": f"{client_uid}@hissaby.local",
-            "name": "Authenticated User",
+            "email": client_email or f"{client_uid}@hissaby.local",
+            "name": client_name or "Authenticated User",
             "tier": "Verified",
             "is_client_identified": True
         }

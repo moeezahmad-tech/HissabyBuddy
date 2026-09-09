@@ -78,8 +78,52 @@ async def get_current_user_profile(user: Dict[str, Any] = Depends(get_current_us
             row = cur.fetchone()
             if row:
                 profile = dict(row)
+
+            # Check if database has dummy hissaby.local email or default name and heal it
+            real_email = user.get("email")
+            real_name = user.get("name") or user.get("display_name")
+            needs_db_fix = False
+            target_email = profile.get("email")
+            target_name = profile.get("display_name")
+
+            if real_email and "@hissaby.local" not in real_email:
+                if not target_email or "@hissaby.local" in target_email:
+                    target_email = real_email
+                    profile["email"] = real_email
+                    needs_db_fix = True
+
+            if real_name and real_name not in ["User", "Authenticated User", "Guest User"]:
+                if not target_name or target_name in ["User", "Authenticated User", "Guest User"]:
+                    target_name = real_name
+                    profile["display_name"] = real_name
+                    needs_db_fix = True
+
+            if needs_db_fix:
+                cur.execute("""
+                    INSERT INTO users (id, display_name, email, default_currency, currency_symbol)
+                    VALUES (%s, %s, %s, 'PKR', 'Rs ')
+                    ON CONFLICT (id) DO UPDATE SET
+                        display_name = CASE 
+                            WHEN EXCLUDED.display_name IS NOT NULL AND EXCLUDED.display_name NOT IN ('User', 'Authenticated User') 
+                            THEN EXCLUDED.display_name 
+                            ELSE users.display_name 
+                        END,
+                        email = CASE 
+                            WHEN EXCLUDED.email NOT LIKE '%%@hissaby.local' THEN EXCLUDED.email
+                            ELSE users.email 
+                        END;
+                """, (uid, target_name or "User", target_email))
+                conn.commit()
+
+            # Ensure profile email never exposes dummy hissaby.local
+            if profile.get("email") and "@hissaby.local" in profile.get("email", ""):
+                if real_email and "@hissaby.local" not in real_email:
+                    profile["email"] = real_email
+                else:
+                    profile["email"] = ""
     except Exception:
-        pass
+        if conn:
+            conn.rollback()
     finally:
         storage_service.put_conn(conn)
 
