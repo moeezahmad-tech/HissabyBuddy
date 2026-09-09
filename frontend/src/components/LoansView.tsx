@@ -221,13 +221,13 @@ export const LoansView: React.FC = () => {
     <div className="space-y-8 pb-16 w-full max-w-6xl mx-auto font-sans">
       
       {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2 text-[#5391FE] text-xs font-bold uppercase tracking-wider mb-1">
             <HandCoins className="w-4 h-4" />
             <span>Debt &amp; Udhaar Ledger</span>
           </div>
-          <h2 className="text-2xl font-black text-[#012456] tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-black text-[#012456] tracking-tight">
             Loans &amp; Debts
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -235,14 +235,16 @@ export const LoansView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 rounded-2xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer shrink-0"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>New Loan Record</span>
-        </button>
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="w-auto px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>New Loan Record</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards Grid */}

@@ -78,7 +78,7 @@ export const DailySpendingChart: React.FC = () => {
   );
 
   return (
-    <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xs h-full flex flex-col justify-between transition-all duration-300">
+    <div className="p-4 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-xs h-full flex flex-col justify-between transition-all duration-300">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 text-[#5391FE] text-xs font-bold uppercase tracking-wider mb-1">

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, ChevronRight, Inbox, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Inbox, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
-import AllTransactionsModal from './AllTransactionsModal';
+
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 interface Transaction {
   id: string;
@@ -22,19 +23,19 @@ interface Transaction {
 export const RecentTransactionsTable: React.FC = () => {
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    try {
-      const cached = localStorage.getItem('hissaby_cached_transactions');
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return [];
-  });
-  const [loading, setLoading] = useState<boolean>(false);
+
+  // Instant 0ms render from synchronous cache
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    appStorage.getInitial<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
+  );
+  const [loading, setLoading] = useState<boolean>(() => transactions.length === 0);
   const [error, setError] = useState<string | null>(null);
-  const [isAllModalOpen, setIsAllModalOpen] = useState<boolean>(false);
 
   const fetchTransactions = async () => {
-    setLoading(true);
+    // Only show blocking loading state if no cached data exists
+    if (transactions.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -47,13 +48,14 @@ export const RecentTransactionsTable: React.FC = () => {
       }
       const res = await fetch(`${apiUrl}/api/dashboard/transactions`, {
         headers,
-        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(15000) : undefined,
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(10000) : undefined,
       }).catch(() => null);
 
       if (res && res.ok) {
         const data = await res.json().catch(() => null);
         const txList = data?.transactions || [];
-        localStorage.setItem('hissaby_cached_transactions', JSON.stringify(txList));
+        // Persist to both localStorage and IndexedDB
+        appStorage.save(STORAGE_KEYS.TRANSACTIONS, txList);
         setTransactions(txList);
       } else if (res && !res.ok) {
         const errJson = await res.json().catch(() => ({ error: 'Failed to fetch transactions' }));
@@ -67,18 +69,36 @@ export const RecentTransactionsTable: React.FC = () => {
   };
 
   useEffect(() => {
+    // Check IndexedDB if localStorage was empty or partitioned
+    appStorage.hydrateFromIndexedDB<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, (dbTxs) => {
+      if (dbTxs && dbTxs.length > 0 && transactions.length === 0) {
+        setTransactions(dbTxs);
+      }
+    });
+
+    // Subscribe to cross-view updates
+    const unsubscribe = appStorage.subscribe<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, (newTxs) => {
+      if (Array.isArray(newTxs)) {
+        setTransactions(newTxs);
+      }
+    });
+
     fetchTransactions();
+
+    return () => {
+      unsubscribe();
+    };
   }, [user]);
 
   return (
-    <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xs overflow-hidden transition-all duration-300">
+    <div className="p-4 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-xs overflow-hidden transition-all duration-300">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h3 className="text-xl font-black text-[#012456] tracking-tight">
-            Recent Transactions
+            Transaction History
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Latest income and expense records
+            Full record of incoming money and outgoing expenditures
           </p>
         </div>
         {user && (
@@ -90,14 +110,6 @@ export const RecentTransactionsTable: React.FC = () => {
               className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-[#012456] hover:bg-slate-50 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button 
-              type="button"
-              onClick={() => setIsAllModalOpen(true)}
-              className="text-xs font-bold text-[#5391FE] hover:text-[#012456] flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <span>View All Transactions</span>
-              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
@@ -131,87 +143,131 @@ export const RecentTransactionsTable: React.FC = () => {
           <h4 className="text-sm font-bold text-[#012456]">No Transactions Logged Yet</h4>
           <p className="text-xs text-slate-500 max-w-sm mt-1">
             {user
-              ? 'Upload PDF bank statements in the Document Upload zone or log transactions in Firestore to see your ledger.'
-              : 'Please sign in with Google to view and manage your isolated financial ledger.'}
+              ? 'Upload PDF bank statements in the Document Upload zone or log transactions to see where money came from and went.'
+              : 'Please sign in to view and manage your isolated financial ledger.'}
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                <th className="pb-3">Transaction</th>
-                <th className="pb-3">Category</th>
-                <th className="pb-3">Date &amp; Time</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs font-medium">
-              {transactions.map((tx) => {
-                const isDebit = tx.amount < 0;
-                return (
-                  <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                          isDebit ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
-                        }`}>
-                          {isDebit ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900">{tx.name}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                            <span className="font-mono text-slate-400">{tx.id}</span>
-                            {tx.payee && (
-                              <span>• Payee: <strong className="text-slate-700">{tx.payee}</strong></span>
-                            )}
-                            {tx.purpose && (
-                              <span className="hidden sm:inline text-slate-500 truncate max-w-xs">({tx.purpose})</span>
-                            )}
+        <>
+          {/* Mobile Native Card View (Visible on small screens) */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {transactions.map((tx) => {
+              const isDebit = tx.amount < 0;
+              const formattedAmt = tx.currencySymbol ? (
+                `${isDebit ? '-' : '+'}${tx.currencySymbol}${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+              ) : tx.currency ? (
+                `${isDebit ? '-' : '+'}${tx.currency} ${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+              ) : (
+                formatAmount(tx.amount, true)
+              );
+
+              return (
+                <div key={tx.id} className="py-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      isDebit ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                    }`}>
+                      {isDebit ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 text-xs truncate">{tx.name}</p>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
+                        <span className="font-semibold text-slate-700">
+                          {isDebit ? (tx.payee ? `To: ${tx.payee}` : 'Money Out') : (tx.payee ? `From: ${tx.payee}` : 'Money In')}
+                        </span>
+                        <span>•</span>
+                        <span className="truncate">{tx.category}</span>
+                        <span>•</span>
+                        <span>{tx.date}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <p className={`text-xs font-black ${isDebit ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {formattedAmt}
+                    </p>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                      {tx.status}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop & Tablet Table View (Hidden on small screens) */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="pb-3">Transaction</th>
+                  <th className="pb-3">Category</th>
+                  <th className="pb-3">Date &amp; Time</th>
+                  <th className="pb-3">Status</th>
+                  <th className="pb-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-medium">
+                {transactions.map((tx) => {
+                  const isDebit = tx.amount < 0;
+                  return (
+                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                            isDebit ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                          }`}>
+                            {isDebit ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{tx.name}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                              <span className="font-mono text-slate-400">{tx.id}</span>
+                              {tx.payee && (
+                                <span>• Payee: <strong className="text-slate-700">{tx.payee}</strong></span>
+                              )}
+                              {tx.purpose && (
+                                <span className="hidden sm:inline text-slate-500 truncate max-w-xs">({tx.purpose})</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-4">
-                      <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-semibold text-[11px]">
-                        {tx.category}
-                      </span>
-                    </td>
-                    <td className="py-4 text-slate-500">{tx.date}</td>
-                    <td className="py-4">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        {tx.status}
-                      </span>
-                    </td>
-                    <td className={`py-4 text-right font-black ${
-                      isDebit ? 'text-rose-600' : 'text-emerald-600'
-                    }`}>
-                      {tx.currencySymbol ? (
-                        `${isDebit ? '-' : '+'}${tx.currencySymbol}${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                      ) : tx.currency ? (
-                        `${isDebit ? '-' : '+'}${tx.currency} ${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                      ) : (
-                        formatAmount(tx.amount, true)
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td className="py-4">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-semibold text-[11px]">
+                          {tx.category}
+                        </span>
+                      </td>
+                      <td className="py-4 text-slate-500">{tx.date}</td>
+                      <td className="py-4">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          {tx.status}
+                        </span>
+                      </td>
+                      <td className={`py-4 text-right font-black ${
+                        isDebit ? 'text-rose-600' : 'text-emerald-600'
+                      }`}>
+                        {tx.currencySymbol ? (
+                          `${isDebit ? '-' : '+'}${tx.currencySymbol}${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                        ) : tx.currency ? (
+                          `${isDebit ? '-' : '+'}${tx.currency} ${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                        ) : (
+                          formatAmount(tx.amount, true)
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
-      {/* Full Transactions Modal */}
-      <AllTransactionsModal
-        isOpen={isAllModalOpen}
-        onClose={() => {
-          setIsAllModalOpen(false);
-          fetchTransactions();
-        }}
-      />
+
     </div>
   );
 };

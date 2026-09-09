@@ -3,6 +3,8 @@ import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, AlertCircle, PiggyBan
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES, type CurrencyCode } from '../context/CurrencyContext';
 
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
+
 interface MetricsData {
   totalBalance: number;
   balanceChange: string;
@@ -19,29 +21,46 @@ interface MetricsData {
   currencySymbol?: string;
 }
 
+const DEFAULT_METRICS: MetricsData = {
+  totalBalance: 0,
+  balanceChange: '0.0%',
+  monthlySpend: 0,
+  spendChange: '0.0%',
+  isPositive: true,
+  aiSavingsIdentified: 0,
+  accountsCount: 0
+};
+
 export const KPICards: React.FC = () => {
   const { user } = useAuth();
   const { currentCurrency, setCurrency } = useCurrency();
 
+  // Instant 0ms render from dual-cache
   const [metrics, setMetrics] = useState<MetricsData>(() => {
-    try {
-      const cached = localStorage.getItem('hissaby_cached_metrics');
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return {
-      totalBalance: 0,
-      balanceChange: '0.0%',
-      monthlySpend: 0,
-      spendChange: '0.0%',
-      isPositive: true,
-      aiSavingsIdentified: 0,
-      accountsCount: 0
-    };
+    const init = appStorage.getInitial<MetricsData>(STORAGE_KEYS.METRICS, DEFAULT_METRICS);
+    if (init && init.totalBalance === 50000) {
+      init.totalBalance = 0;
+    }
+    return init;
   });
   const [hasError, setHasError] = useState<boolean>(false);
 
   useEffect(() => {
     let isCancelled = false;
+
+    // Check IndexedDB if localStorage was empty or needs hydration
+    appStorage.hydrateFromIndexedDB<MetricsData>(STORAGE_KEYS.METRICS, (dbMetrics) => {
+      if (dbMetrics && !isCancelled) {
+        setMetrics(dbMetrics);
+      }
+    });
+
+    // Real-time synchronization when transaction is logged or metrics update
+    const unsubscribe = appStorage.subscribe<MetricsData>(STORAGE_KEYS.METRICS, (newMetrics) => {
+      if (newMetrics && !isCancelled) {
+        setMetrics(newMetrics);
+      }
+    });
 
     const fetchMetrics = async () => {
       setHasError(false);
@@ -76,7 +95,8 @@ export const KPICards: React.FC = () => {
             currency: data.currency,
             currencySymbol: data.currencySymbol
           };
-          localStorage.setItem('hissaby_cached_metrics', JSON.stringify(metricsPayload));
+          // Persist instantly to localStorage + IndexedDB
+          appStorage.save(STORAGE_KEYS.METRICS, metricsPayload);
           setMetrics(metricsPayload);
         } else if (!res.ok && !isCancelled) {
           setHasError(true);
@@ -92,6 +112,7 @@ export const KPICards: React.FC = () => {
 
     return () => {
       isCancelled = true;
+      unsubscribe();
     };
   }, [user]);
 
@@ -107,7 +128,7 @@ export const KPICards: React.FC = () => {
       value: formatCardValue(metrics.totalBalance),
       change: metrics.balanceChange,
       isPositive: true,
-      subtitle: `${metrics.accountsCount || 1} active account connected`,
+      subtitle: '',
       icon: Wallet,
     },
     {
@@ -148,13 +169,13 @@ export const KPICards: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-6">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
             <div
               key={kpi.title}
-              className={`p-6 rounded-3xl bg-white border transition-all duration-300 shadow-xs hover:shadow-md hover:-translate-y-0.5 group ${
+              className={`p-4 sm:p-6 rounded-3xl bg-white border transition-all duration-300 shadow-xs hover:shadow-md hover:-translate-y-0.5 group ${
                 kpi.highlight
                   ? 'border-[#5391FE]/50 bg-gradient-to-br from-white to-blue-50/20'
                   : 'border-slate-200'
@@ -183,9 +204,11 @@ export const KPICards: React.FC = () => {
                 <div className="text-3xl font-black text-[#012456] tracking-tight mt-1">
                   {kpi.value}
                 </div>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  {kpi.subtitle}
-                </p>
+                {kpi.subtitle ? (
+                  <p className="text-xs text-slate-500 font-medium mt-1">
+                    {kpi.subtitle}
+                  </p>
+                ) : null}
               </div>
             </div>
           );

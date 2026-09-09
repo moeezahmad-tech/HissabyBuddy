@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import HeaderNav from './components/HeaderNav';
+import {HeaderNav} from './components/HeaderNav';
 import HeroSection from './components/HeroSection';
 import SevenFeatureSections from './components/SevenFeatureSections';
 import Footer from './components/Footer';
@@ -13,22 +13,31 @@ import RecurringMoneyView from './components/RecurringMoneyView';
 import AIFinancialAssistantView from './components/AIFinancialAssistantView';
 import DocumentUploadView from './components/DocumentUploadView';
 import SettingsView from './components/SettingsView';
+import NotificationsView from './components/NotificationsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { ToastProvider } from './context/ToastContext';
 import { useServerKeepAlive } from './hooks/useServerKeepAlive';
-import { Sparkles, RefreshCw } from 'lucide-react';
 
 import LoginPage from './components/LoginPage';
 import AboutPage from './components/AboutPage';
 import TechKreativePage from './components/TechKreativePage';
 import ContactPage from './components/ContactPage';
 import CreateGroupWizard from './components/CreateGroupWizard';
+import PWABanner from './components/PWABanner';
 
 // Landing Page Component at Route: "/"
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // If user is logged in, automatically move directly to the dashboard
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (user && params.get('view') !== 'landing') {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleGetStarted = () => {
     if (!user) {
@@ -46,10 +55,13 @@ const HomePage: React.FC = () => {
         <HeroSection onOpenApp={handleGetStarted} />
       </div>
 
-      {/* 2. 7 Dedicated Feature Sections */}
+      {/* 2. Dedicated PWA App Download Banner on Home Screen */}
+      <PWABanner />
+
+      {/* 3. 7 Dedicated Feature Sections */}
       <SevenFeatureSections onOpenApp={handleGetStarted} />
 
-      {/* 3. Clean Footer */}
+      {/* 4. Clean Footer */}
       <Footer />
     </div>
   );
@@ -66,32 +78,17 @@ const ProtectedDashboardLayout: React.FC = () => {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return <AppView onBackToLanding={() => navigate('/')} />;
+  return <AppView onBackToLanding={() => navigate('/?view=landing')} />;
 };
 
 export const App: React.FC = () => {
-  const { isWakingUp } = useServerKeepAlive();
+  // Cloud keepalive runs quietly in background without visual popup
+  useServerKeepAlive();
 
   return (
     <AuthProvider>
       <CurrencyProvider>
         <ToastProvider>
-          {/* Render Cloud Wakeup Banner */}
-          {isWakingUp && (
-            <div className="fixed bottom-5 right-5 z-50 bg-[#012456] text-white px-4 py-3 rounded-2xl shadow-2xl border border-blue-400/30 flex items-center gap-3 animate-fadeIn text-xs">
-              <RefreshCw className="w-4 h-4 text-[#5391FE] animate-spin shrink-0" />
-              <div>
-                <p className="font-bold flex items-center gap-1.5">
-                  <span>Waking up cloud backend...</span>
-                  <Sparkles className="w-3 h-3 text-[#5391FE]" />
-                </p>
-                <p className="text-[10px] text-slate-300">
-                  Render server is spinning up. Ready in ~30 seconds!
-                </p>
-              </div>
-            </div>
-          )}
-
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<HomePage />} />
@@ -111,6 +108,7 @@ export const App: React.FC = () => {
                 <Route path="assistant" element={<AIFinancialAssistantView />} />
                 <Route path="upload" element={<DocumentUploadView />} />
                 <Route path="settings" element={<SettingsView />} />
+                <Route path="notifications" element={<NotificationsView />} />
               </Route>
 
               {/* Shorthand alias routes for direct URL navigation */}
@@ -121,6 +119,7 @@ export const App: React.FC = () => {
               <Route path="/assistant" element={<Navigate to="/dashboard/assistant" replace />} />
               <Route path="/upload" element={<Navigate to="/dashboard/upload" replace />} />
               <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+              <Route path="/notifications" element={<Navigate to="/dashboard/notifications" replace />} />
 
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />

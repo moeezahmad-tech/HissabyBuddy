@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 interface Transaction {
   id: string;
@@ -38,13 +39,21 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
 }) => {
   const { user } = useAuth();
   const { formatAmount, currentCurrency } = useCurrency();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  // Instant 0ms render from dual-cache
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    appStorage.getInitial<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // Refresh from cache first in case new items were added
+    const cached = appStorage.getInitial<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, []);
+    if (cached.length > 0) setTransactions(cached);
 
     const fetchAll = async () => {
       try {
@@ -55,7 +64,9 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
         const res = await fetch(`${apiUrl}/api/dashboard/transactions`, { headers });
         if (res.ok) {
           const data = await res.json();
-          setTransactions(data.transactions || []);
+          const list = data.transactions || [];
+          setTransactions(list);
+          appStorage.save(STORAGE_KEYS.TRANSACTIONS, list);
         }
       } catch {
         // ignore

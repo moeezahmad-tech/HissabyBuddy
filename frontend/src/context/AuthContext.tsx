@@ -37,7 +37,31 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const STORAGE_KEY = 'hissaby_auth_user';
+export const STORAGE_KEY = 'hissaby_auth_user';
+export const PROFILE_CACHE_KEY = 'hissaby_user_profile_cache';
+
+export interface CachedProfile {
+  displayName: string;
+  email: string;
+  about?: string;
+  darkMode?: boolean;
+  lastUpdated?: number;
+}
+
+export const syncProfileCache = (data: Partial<CachedProfile>) => {
+  try {
+    const existing = localStorage.getItem(PROFILE_CACHE_KEY);
+    const prev = existing ? JSON.parse(existing) : {};
+    const merged: CachedProfile = {
+      displayName: data.displayName !== undefined ? data.displayName : (prev.displayName || ''),
+      email: data.email !== undefined ? data.email : (prev.email || ''),
+      about: data.about !== undefined ? data.about : (prev.about || ''),
+      darkMode: data.darkMode !== undefined ? data.darkMode : (prev.darkMode !== undefined ? prev.darkMode : true),
+      lastUpdated: Date.now()
+    };
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(merged));
+  } catch {}
+};
 
 function formatFirebaseError(err: any): string {
   const code = err?.code || '';
@@ -103,6 +127,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(u);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+          syncProfileCache({ displayName: u.displayName, email: u.email });
+          syncServerProfileBackground(u);
           setIsAuthModalOpen(false);
           dispatchAuthNotification('login', idToken);
         }
@@ -125,6 +151,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             setUser(u);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+            syncProfileCache({ displayName: u.displayName, email: u.email });
+            syncServerProfileBackground(u);
           } catch {
             // ignore
           }
@@ -140,6 +168,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isMounted = false;
     };
   }, []);
+
+  // Background profile synchronization to prime localStorage cache
+  const syncServerProfileBackground = async (u: UserProfile) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/auth/me`, {
+        headers: {
+          ...(u.token ? { Authorization: `Bearer ${u.token}` } : {}),
+          ...(u.uid ? { 'X-User-Id': u.uid } : {}),
+          ...(u.email && !u.email.includes('@hissaby.local') ? { 'X-User-Email': u.email } : {}),
+          ...(u.displayName && u.displayName !== 'User' ? { 'X-User-Name': u.displayName } : {}),
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'authenticated' && data.profile) {
+          const prof = data.profile;
+          syncProfileCache({
+            displayName: prof.display_name && prof.display_name !== 'User' && prof.display_name !== 'Authenticated User'
+              ? prof.display_name
+              : u.displayName,
+            email: prof.email && !prof.email.includes('@hissaby.local') ? prof.email : u.email,
+            about: prof.preferences?.about || '',
+            darkMode: prof.dark_mode !== undefined ? prof.dark_mode : true
+          });
+        }
+      }
+    } catch {
+      // Quiet background failure
+    }
+  };
 
   // Helper to notify backend for automated welcome / login alert emails
   const dispatchAuthNotification = async (eventType: 'login' | 'signup', token?: string) => {
@@ -208,6 +267,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      syncProfileCache({ displayName: u.displayName, email: u.email });
+      syncServerProfileBackground(u);
       setIsAuthModalOpen(false);
       dispatchAuthNotification('login', idToken);
     } catch (err: any) {
@@ -253,6 +314,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      syncProfileCache({ displayName: u.displayName, email: u.email });
+      syncServerProfileBackground(u);
       setIsAuthModalOpen(false);
       dispatchAuthNotification('login', idToken);
     } catch (err: any) {
@@ -295,6 +358,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setUser(u);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+      syncProfileCache({ displayName: u.displayName, email: u.email });
+      syncServerProfileBackground(u);
       setIsAuthModalOpen(false);
       dispatchAuthNotification('signup', idToken);
     } catch (err: any) {
@@ -314,6 +379,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(PROFILE_CACHE_KEY);
   };
 
   const openAuthModal = () => {
@@ -338,6 +404,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setUser(updated);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    syncProfileCache({ displayName, email: email || user.email });
   };
 
   return (

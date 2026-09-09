@@ -93,6 +93,7 @@ export const LoginPage: React.FC = () => {
       } else {
         await signUpWithEmail(email.trim(), password, name.trim() || undefined);
       }
+      navigate('/dashboard', { replace: true });
     } catch {
       // Handled in context
     } finally {
@@ -104,6 +105,7 @@ export const LoginPage: React.FC = () => {
     setSubmitting(true);
     try {
       await signInWithGoogle();
+      navigate('/dashboard', { replace: true });
     } catch {
       // Handled in context
     } finally {

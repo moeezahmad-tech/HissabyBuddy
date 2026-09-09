@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Lock, Mail, User, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +9,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+  const navigate = useNavigate();
   const { 
     signInWithGoogle, 
     signInWithEmail, 
@@ -28,10 +30,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     if (!email || !password) return;
 
-    if (mode === 'signin') {
-      await signInWithEmail(email, password);
-    } else {
-      await signUpWithEmail(email, password, name);
+    try {
+      if (mode === 'signin') {
+        await signInWithEmail(email, password);
+      } else {
+        await signUpWithEmail(email, password, name);
+      }
+      onClose();
+      navigate('/dashboard', { replace: true });
+    } catch {
+      // Handled in context
+    }
+  };
+
+  const handleGoogleClick = async () => {
+    try {
+      await signInWithGoogle();
+      onClose();
+      navigate('/dashboard', { replace: true });
+    } catch {
+      // Handled in context
     }
   };
 
@@ -78,7 +96,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         {/* Google Authentication Button */}
         <button
           type="button"
-          onClick={signInWithGoogle}
+          onClick={handleGoogleClick}
           disabled={loading}
           className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:border-[#5391FE] hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
         >

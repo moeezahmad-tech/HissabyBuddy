@@ -3,7 +3,6 @@ import {
   X, 
   Sparkles, 
   PlusCircle, 
-  Briefcase, 
   ShoppingCart, 
   ArrowUpRight, 
   ArrowDownRight, 
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 interface QuickTransactionModalProps {
   isOpen: boolean;
@@ -32,8 +32,14 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // AI Tab State
+  // AI Entry State
   const [aiText, setAiText] = useState('');
+
+  // Manual Income State
+  const [incomeName, setIncomeName] = useState('');
+  const [incomeAmount, setIncomeAmount] = useState('');
+  const [incomeCategory, setIncomeCategory] = useState('Income & Earnings');
+  const [incomeEmployer, setIncomeEmployer] = useState('');
 
   // Manual Expense State
   const [expenseName, setExpenseName] = useState('');
@@ -41,12 +47,6 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
   const [expenseCategory, setExpenseCategory] = useState('Food & Groceries');
   const [expensePayee, setExpensePayee] = useState('');
   const [expensePurpose, setExpensePurpose] = useState('');
-
-  // Income / Salary State
-  const [incomeName, setIncomeName] = useState('Monthly Salary');
-  const [incomeAmount, setIncomeAmount] = useState('');
-  const [incomeEmployer, setIncomeEmployer] = useState('');
-  const [incomeCategory, setIncomeCategory] = useState('Salary & Income');
 
   if (!isOpen) return null;
 
@@ -71,6 +71,11 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
       if (res.ok) {
         const data = await res.json();
+        // Immediately update offline-first local storage & IndexedDB (0ms)
+        if (data.transaction) {
+          const prev = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+          appStorage.save(STORAGE_KEYS.TRANSACTIONS, [data.transaction, ...prev]);
+        }
         setSuccessMsg(data.message || 'Transaction successfully logged via AI!');
         setAiText('');
         setTimeout(() => {
@@ -93,7 +98,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
     const amountStr = isCredit ? incomeAmount : expenseAmount;
     const category = isCredit ? incomeCategory : expenseCategory;
     const payee = isCredit ? incomeEmployer : expensePayee;
-    const purpose = isCredit ? 'Monthly Salary Deposit' : expensePurpose;
+    const purpose = isCredit ? (incomeCategory || 'Income Deposit') : expensePurpose;
 
     if (!name || !amountStr) {
       setError('Please provide a name and amount.');
@@ -131,6 +136,12 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
       });
 
       if (res.ok) {
+        const data = await res.json();
+        // Immediately update offline-first local storage & IndexedDB (0ms)
+        if (data.transaction) {
+          const prev = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+          appStorage.save(STORAGE_KEYS.TRANSACTIONS, [data.transaction, ...prev]);
+        }
         setSuccessMsg(`Successfully logged ${name} (${currentCurrency.symbol}${numAmount.toLocaleString()})!`);
         setTimeout(() => {
           onSuccess();
@@ -166,7 +177,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                 Log Financial Activity
               </h3>
               <p className="text-xs text-slate-400">
-                Record monthly salary, manual purchases, or use AI text input
+                Record income, client payments, sales, pocket money, or expenses
               </p>
             </div>
           </div>
@@ -204,7 +215,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             }`}
           >
             <ArrowDownRight className="w-3.5 h-3.5" />
-            <span>Log Expense</span>
+            <span>Add Expense</span>
           </button>
 
           <button
@@ -217,7 +228,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             }`}
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>Add Salary</span>
+            <span>Add Money</span>
           </button>
         </div>
 
@@ -246,7 +257,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
               <textarea
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
-                placeholder="e.g. 'Received 150000 monthly salary from Google' or 'Paid 3500 for grocery shopping at Metro yesterday'"
+                placeholder="e.g. 'Received 150000 client payment for web project' or 'Paid 3500 for grocery shopping at Metro yesterday'"
                 rows={3}
                 className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20 transition-all resize-none"
               />
@@ -256,10 +267,10 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
               <span className="text-[10px] text-slate-400 font-bold uppercase block w-full">Quick suggestions:</span>
               <button
                 type="button"
-                onClick={() => setAiText('Received 120,000 monthly salary')}
+                onClick={() => setAiText('Received 120,000 client payment')}
                 className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
               >
-                + Salary 120k
+                + Client Paid 120k
               </button>
               <button
                 type="button"
@@ -380,12 +391,12 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
               className="w-full mt-2 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
             >
               {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
-              <span>Log Expense ({currentCurrency.symbol})</span>
+              <span>Add Expense ({currentCurrency.symbol})</span>
             </button>
           </form>
         )}
 
-        {/* Tab 3: Add Salary / Income */}
+        {/* Tab 3: Add Money / Income */}
         {activeTab === 'income' && (
           <form
             onSubmit={(e) => {
@@ -395,12 +406,12 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             className="space-y-3"
           >
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Income Title</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Income Title / Source</label>
               <input
                 type="text"
                 value={incomeName}
                 onChange={(e) => setIncomeName(e.target.value)}
-                placeholder="e.g. Monthly Salary, Freelance Payment, Bonus"
+                placeholder="e.g. Client Payment, Freelance Project, Sales, Pocket Money"
                 className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                 required
               />
@@ -408,13 +419,13 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Salary Amount ({currentCurrency.code})</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Amount ({currentCurrency.code})</label>
                 <input
                   type="number"
                   step="any"
                   value={incomeAmount}
                   onChange={(e) => setIncomeAmount(e.target.value)}
-                  placeholder="e.g. 150000"
+                  placeholder="e.g. 50000"
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                   required
                 />
@@ -427,21 +438,24 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                   onChange={(e) => setIncomeCategory(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                 >
-                  <option value="Salary & Income">Salary &amp; Income</option>
+                  <option value="Income & Earnings">Income &amp; Earnings</option>
                   <option value="Freelance & Consulting">Freelance &amp; Consulting</option>
                   <option value="Business Revenue">Business Revenue</option>
+                  <option value="Client Payment">Client Payment</option>
+                  <option value="Pocket Money & Allowance">Pocket Money &amp; Allowance</option>
+                  <option value="Salary & Wages">Salary &amp; Wages</option>
                   <option value="Investments & Dividends">Investments &amp; Dividends</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">Employer / Client / Company</label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Client / Payer / Source</label>
               <input
                 type="text"
                 value={incomeEmployer}
                 onChange={(e) => setIncomeEmployer(e.target.value)}
-                placeholder="e.g. Acme Corp, Tech Innovations Ltd"
+                placeholder="e.g. Client Name, Customer, Company, Family"
                 className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -451,8 +465,8 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
               disabled={loading}
               className="w-full mt-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Briefcase className="w-4 h-4" />}
-              <span>Record Salary Deposit (+{currentCurrency.symbol})</span>
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
+              <span>Add Money (+{currentCurrency.symbol})</span>
             </button>
           </form>
         )}

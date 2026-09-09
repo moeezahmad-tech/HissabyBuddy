@@ -8,3 +8,12 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Register PWA Service Worker
+if ('serviceWorker' in navigator && !window.location.hostname.includes('stackblitz')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('PWA ServiceWorker registration failed: ', err);
+    });
+  });
+}

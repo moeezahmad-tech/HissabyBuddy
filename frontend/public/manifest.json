@@ -1,0 +1,32 @@
+{
+  "short_name": "Hissaby Buddy",
+  "name": "Hissaby Buddy - AI Financial Copilot",
+  "description": "Smart Financial Decisions with AI Copilot, RAG Statement OCR, and Shared Group Ledgers",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#012456",
+  "background_color": "#FFFFFF",
+  "categories": ["finance", "productivity", "business"]
+}

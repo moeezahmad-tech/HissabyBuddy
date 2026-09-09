@@ -5,8 +5,7 @@ import {
   Sparkles, 
   User, 
   AlertCircle, 
-  RefreshCw, 
-  CheckCircle2
+  RefreshCw 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -56,14 +55,6 @@ export const AIFinancialAssistantView: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
-
-  const quickPrompts = [
-    'What is my most expensive purchase?',
-    'How much documents are uploaded?',
-    'What is my current total balance and spend?',
-    'Show breakdown of office equipment vs food expenses',
-    'Who are my main payees?',
-  ];
 
   const handleSendPrompt = async (promptText: string) => {
     if (!promptText.trim() || loading) return;
@@ -279,25 +270,48 @@ export const AIFinancialAssistantView: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-6 pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-black text-[#012456] tracking-tight flex items-center gap-2">
-            <Bot className="w-6 h-6 text-[#5391FE]" />
-            AI Assistant
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Ask questions about your budget, spending, or uploaded documents.
-          </p>
+    <div className="w-full h-full flex flex-col min-h-0 max-w-5xl mx-auto py-1 sm:py-2">
+      {/* Sleek Minimal Subheader */}
+      <div className="flex items-center justify-between gap-3 pb-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-blue-50 text-[#5391FE] flex items-center justify-center shrink-0">
+            <Bot className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-xs sm:text-sm font-black text-[#012456] leading-tight">
+              Hissaby AI Copilot
+            </h2>
+            <p className="text-[10px] text-slate-500 hidden sm:block">
+              Grounded on your verified statements, bills & transactions
+            </p>
+          </div>
         </div>
 
-
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm('Clear conversation history?')) {
+              setMessages([
+                {
+                  sender: 'assistant',
+                  text: 'Hello! I am your **Hissaby Buddy Financial Copilot**. I have access to your live financial statements, verified OCR records, and budget metrics. Ask me anything about your balance, expenses, vendors, or salary!',
+                  time: 'Just now'
+                }
+              ]);
+              try {
+                localStorage.removeItem(CHAT_STORAGE_KEY);
+              } catch {}
+            }
+          }}
+          className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 px-2.5 py-1 rounded-lg hover:bg-slate-200/60 transition-all cursor-pointer shrink-0"
+        >
+          Clear Chat
+        </button>
       </div>
 
       {/* Error Banner */}
       {errorMsg && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl flex items-center justify-between shadow-xs animate-fadeIn">
+        <div className="p-3 mb-2 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center justify-between shadow-xs shrink-0 animate-fadeIn">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMsg}</span>
@@ -311,132 +325,76 @@ export const AIFinancialAssistantView: React.FC = () => {
         </div>
       )}
 
-      {/* Full-Width Grid: Chat Area + Interactive Copilot Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* Chat Area - Pure flex-1 height with NO outer scroll, ONLY inner chat scroll */}
+      <div className="w-full flex-1 min-h-0 rounded-2xl sm:rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col overflow-hidden">
         
-        {/* Left Column: Responsive Chat View */}
-        <div className="lg:col-span-8 xl:col-span-9 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col h-[calc(100vh-14rem)] overflow-hidden">
-          
-          {/* Chat Messages Stream */}
-          <div className="flex-1 p-6 overflow-y-auto space-y-4">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex gap-3.5 ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-              >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  msg.sender === 'user'
-                    ? 'bg-[#012456] text-white shadow-xs'
-                    : msg.isError
-                      ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                      : 'bg-blue-50 text-[#5391FE] border border-blue-100'
-                }`}>
-                  {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                </div>
-
-                <div className={`max-w-2xl rounded-2xl p-4 text-xs sm:text-sm ${
-                  msg.sender === 'user'
-                    ? 'bg-[#5391FE] text-white rounded-tr-none shadow-xs'
-                    : msg.isError
-                      ? 'bg-rose-50/70 border border-rose-200 text-rose-800 rounded-tl-none'
-                      : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-tl-none'
-                }`}>
-                  {renderMarkdown(msg.text, msg.sender === 'user')}
-                  <span className={`block text-[10px] mt-2 ${
-                    msg.sender === 'user' ? 'text-blue-100' : 'text-slate-400'
-                  }`}>
-                    {msg.time}
-                  </span>
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="flex gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#5391FE] flex items-center justify-center">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-500 italic flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-[#5391FE] animate-pulse" />
-                  <span>Thinking and retrieving live financial context...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Bar */}
-          <form onSubmit={handleSend} className="p-4 bg-white border-t border-slate-200 flex gap-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={loading}
-              placeholder="Ask about your financial statements, monthly forecast, or budget..."
-              className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20 disabled:opacity-60 transition-all"
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="px-6 py-3 bg-[#5391FE] hover:bg-[#437de0] disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+        {/* Chat Messages Stream - ONLY THIS SCROLLS */}
+        <div className="flex-1 min-h-0 p-3.5 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 overscroll-contain">
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex gap-2.5 sm:gap-3.5 ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
             >
-              <span>Send</span>
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
-
-        {/* Right Column: Copilot Insights & Suggested Prompts (Fills the empty space!) */}
-        <div className="lg:col-span-4 xl:col-span-3 space-y-4">
-          
-          {/* Quick Prompts Card */}
-          <div className="rounded-3xl bg-white border border-slate-200 shadow-xs p-5 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#5391FE]" />
-              Instant Financial Questions
-            </h4>
-            <div className="space-y-2">
-              {quickPrompts.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleSendPrompt(p)}
-                  className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 text-xs font-semibold text-slate-700 hover:text-[#012456] transition-all cursor-pointer block leading-relaxed disabled:opacity-50"
-                >
-                  "{p}"
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* RAG Knowledge Grounding Card */}
-          <div className="rounded-3xl bg-white border border-slate-200 shadow-xs p-5 space-y-3 text-xs">
-            <h4 className="font-bold text-[#012456] flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              Grounded AI Engine
-            </h4>
-            <p className="text-slate-500 leading-relaxed">
-              Every answer is strictly grounded in your uploaded statements, OCR ledger, and Pinecone vectors.
-            </p>
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span>Vector Dimension:</span>
-                <strong className="font-mono text-slate-800">384-d Cosine</strong>
+              <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                msg.sender === 'user'
+                  ? 'bg-[#012456] text-white shadow-xs'
+                  : msg.isError
+                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                    : 'bg-blue-50 text-[#5391FE] border border-blue-100'
+              }`}>
+                {msg.sender === 'user' ? <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               </div>
-              <div className="flex items-center justify-between text-slate-500">
-                <span>Inference Engine:</span>
-                <strong className="text-slate-800">Groq LPU</strong>
-              </div>
-              <div className="flex items-center justify-between text-slate-500">
-                <span>Data Isolation:</span>
-                <strong className="text-emerald-600">Per-User Guard</strong>
+
+              <div className={`max-w-[85%] sm:max-w-2xl rounded-2xl p-3 sm:p-4 text-xs sm:text-sm ${
+                msg.sender === 'user'
+                  ? 'bg-[#5391FE] text-white rounded-tr-none shadow-xs'
+                  : msg.isError
+                    ? 'bg-rose-50/70 border border-rose-200 text-rose-800 rounded-tl-none'
+                    : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-tl-none'
+              }`}>
+                {renderMarkdown(msg.text, msg.sender === 'user')}
+                <span className={`block text-[10px] mt-1.5 ${
+                  msg.sender === 'user' ? 'text-blue-100' : 'text-slate-400'
+                }`}>
+                  {msg.time}
+                </span>
               </div>
             </div>
-          </div>
+          ))}
 
+          {loading && (
+            <div className="flex gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-50 text-[#5391FE] flex items-center justify-center shrink-0">
+                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 text-xs text-slate-500 italic flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-[#5391FE] animate-pulse" />
+                <span>Thinking and analyzing your financial data...</span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
+        {/* Input Bar - Pinned at bottom, shrink-0 */}
+        <form onSubmit={handleSend} className="p-2.5 sm:p-3.5 bg-white border-t border-slate-200 flex gap-2 sm:gap-3 shrink-0">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            disabled={loading}
+            placeholder="Ask about your balance, spending, or records..."
+            className="flex-1 px-3.5 sm:px-4 py-2 sm:py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20 disabled:opacity-60 transition-all"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[#5391FE] hover:bg-[#437de0] disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95 shrink-0"
+          >
+            <span>Send</span>
+            <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 export interface RecurringItem {
   id: string;
@@ -31,22 +32,24 @@ export interface RecurringItem {
   amount: number;
   isIncome: boolean;
   category: string;
-  frequency: 'Monthly' | 'Weekly' | 'Bi-Weekly' | 'Yearly';
+  frequency: string;
   dueDay: number;
   notes?: string;
   isActive: boolean;
   currency?: string;
   currencySymbol?: string;
   createdAt?: string;
-  lastPosted?: string;
+  nextDueDate?: string;
+  autoDebit?: boolean;
+  status?: string;
 }
 
 const PRESET_TEMPLATES = [
-  { name: 'House Rent', amount: 35000, isIncome: false, category: 'Housing', dueDay: 1, icon: Home },
-  { name: 'Monthly Salary', amount: 150000, isIncome: true, category: 'Salary & Income', dueDay: 1, icon: Briefcase },
-  { name: 'Pocket Money', amount: 8000, isIncome: false, category: 'Personal & Family', dueDay: 5, icon: Wallet },
-  { name: 'Electricity Bill', amount: 12000, isIncome: false, category: 'Utilities', dueDay: 10, icon: Zap },
-  { name: 'Internet / Wi-Fi', amount: 3500, isIncome: false, category: 'Utilities', dueDay: 15, icon: Wifi },
+  { name: 'Apartment Rent', amount: 45000, isIncome: false, category: 'Housing', dueDay: 1, icon: Home },
+  { name: 'Monthly Salary', amount: 150000, isIncome: true, category: 'Income', dueDay: 1, icon: Briefcase },
+  { name: 'Pocket Money', amount: 10000, isIncome: false, category: 'Allowance', dueDay: 1, icon: Wallet },
+  { name: 'Electricity (WAPDA / K-Electric)', amount: 18500, isIncome: false, category: 'Utilities', dueDay: 15, icon: Zap },
+  { name: 'High-Speed WiFi Internet', amount: 3500, isIncome: false, category: 'Utilities', dueDay: 10, icon: Wifi },
   { name: 'Mobile Postpaid', amount: 2200, isIncome: false, category: 'Utilities', dueDay: 20, icon: Smartphone },
   { name: 'School / College Fees', amount: 15000, isIncome: false, category: 'Education', dueDay: 5, icon: GraduationCap },
   { name: 'Car Loan Installment', amount: 28000, isIncome: false, category: 'Transport', dueDay: 10, icon: Car },
@@ -57,13 +60,10 @@ export const RecurringMoneyView: React.FC = () => {
   const { user } = useAuth();
   const { currentCurrency, formatAmount } = useCurrency();
 
-  const [items, setItems] = useState<RecurringItem[]>(() => {
-    try {
-      const cached = localStorage.getItem('hissaby_cached_recurring');
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return [];
-  });
+  // Instant 0ms render from dual-cache
+  const [items, setItems] = useState<RecurringItem[]>(() =>
+    appStorage.getInitial<RecurringItem[]>(STORAGE_KEYS.RECURRING, [])
+  );
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'expense' | 'income'>('all');
@@ -95,7 +95,7 @@ export const RecurringMoneyView: React.FC = () => {
         const data = await res.json();
         const recList = data.items || [];
         setItems(recList);
-        localStorage.setItem('hissaby_cached_recurring', JSON.stringify(recList));
+        appStorage.save(STORAGE_KEYS.RECURRING, recList);
       }
     } catch {
       // offline fallback
@@ -103,7 +103,23 @@ export const RecurringMoneyView: React.FC = () => {
   };
 
   useEffect(() => {
+    appStorage.hydrateFromIndexedDB<RecurringItem[]>(STORAGE_KEYS.RECURRING, (dbItems) => {
+      if (dbItems && dbItems.length > 0 && items.length === 0) {
+        setItems(dbItems);
+      }
+    });
+
+    const unsubscribe = appStorage.subscribe<RecurringItem[]>(STORAGE_KEYS.RECURRING, (newItems) => {
+      if (Array.isArray(newItems)) {
+        setItems(newItems);
+      }
+    });
+
     fetchRecurringItems();
+
+    return () => {
+      unsubscribe();
+    };
   }, [user]);
 
   const handleOpenPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
@@ -168,7 +184,7 @@ export const RecurringMoneyView: React.FC = () => {
       };
       const updated = [localItem, ...items];
       setItems(updated);
-      localStorage.setItem('hissaby_cached_recurring', JSON.stringify(updated));
+      appStorage.save(STORAGE_KEYS.RECURRING, updated);
       setIsModalOpen(false);
       setSuccessToast(`Added recurring ${formName} (saved locally)!`);
       setTimeout(() => setSuccessToast(null), 3500);
@@ -192,7 +208,7 @@ export const RecurringMoneyView: React.FC = () => {
 
     const updated = items.filter(i => i.id !== id);
     setItems(updated);
-    localStorage.setItem('hissaby_cached_recurring', JSON.stringify(updated));
+    appStorage.save(STORAGE_KEYS.RECURRING, updated);
     setSuccessToast(`Deleted ${name}.`);
     setTimeout(() => setSuccessToast(null), 3000);
   };
@@ -331,10 +347,10 @@ export const RecurringMoneyView: React.FC = () => {
             setFormNotes('');
             setIsModalOpen(true);
           }}
-          className="px-4 py-2.5 rounded-2xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer hover:shadow-md"
+          className="w-fit self-start sm:self-auto px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-95"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Recurring Obligation</span>
+          <Plus className="w-3.5 h-3.5" />
+          <span>Add Obligation</span>
         </button>
       </div>
 

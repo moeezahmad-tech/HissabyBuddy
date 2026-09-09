@@ -32,19 +32,20 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
       {/* ========================================================================= */}
       {/* SECTION 1: SMART DOCUMENT UPLOAD & RAG */}
       {/* ========================================================================= */}
-      <section id="feature-document-upload" className="py-24 bg-white border-t border-slate-200">
+      <section id="feature-document-upload" className="py-12 sm:py-20 bg-white border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* Left: Text Information & SEO Headings */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#5391FE] text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#5391FE] text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-[#5391FE]" />
-                <span>Feature 01 • Smart Ingestion &amp; OCR</span>
+                <span>Feature 01 • Smart OCR Ingestion</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                Smart Document Upload &amp; Intelligent OCR Search
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+                <span className="sm:hidden">Smart Document Upload &amp; OCR</span>
+                <span className="hidden sm:inline">Smart Document Upload &amp; Intelligent OCR</span>
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -213,14 +214,15 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
             </div>
 
             {/* Right: Text Information */}
-            <div className="lg:col-span-6 order-1 lg:order-2 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 order-1 lg:order-2 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span>Feature 02 • Conversational Financial Intelligence</span>
+                <span>Feature 02 • Conversational AI</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                AI Financial Chat Assistant Powered by Groq AI
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+                <span className="sm:hidden">AI Financial Assistant with Groq</span>
+                <span className="hidden sm:inline">AI Financial Chat Assistant with Groq AI</span>
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -261,18 +263,18 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
       {/* ========================================================================= */}
       {/* SECTION 3: INTERACTIVE FINANCIAL DASHBOARD */}
       {/* ========================================================================= */}
-      <section id="feature-dashboard" className="py-24 bg-white border-t border-slate-200">
+      <section id="feature-interactive-dashboard" className="py-12 sm:py-20 bg-white border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* Left: Text Information */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#5391FE] text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#5391FE] text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-[#5391FE]" />
                 <span>Feature 03 • Real-Time Analytics</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
                 Interactive Financial Dashboard
               </h2>
               
@@ -383,9 +385,9 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
       {/* ========================================================================= */}
       {/* SECTION 4: SECURE AUTHENTICATION & DATA ISOLATION */}
       {/* ========================================================================= */}
-      <section id="feature-auth-security" className="py-24 bg-slate-50 border-t border-slate-200">
+      <section id="feature-auth-security" className="py-12 sm:py-20 bg-slate-50 border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* Left: UI Visual Card */}
             <div className="lg:col-span-6 order-2 lg:order-1">
@@ -430,14 +432,15 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
             </div>
 
             {/* Right: Text Information */}
-            <div className="lg:col-span-6 order-1 lg:order-2 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 order-1 lg:order-2 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 <span>Feature 04 • Enterprise Security</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                Secure Authentication &amp; Data Isolation
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+                <span className="sm:hidden">Secure Auth &amp; Data Privacy</span>
+                <span className="hidden sm:inline">Secure Authentication &amp; Data Isolation</span>
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -488,19 +491,20 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
       {/* ========================================================================= */}
       {/* SECTION 5: STRUCTURED TRANSACTION & BUDGET LOGGING */}
       {/* ========================================================================= */}
-      <section id="feature-transaction-logging" className="py-24 bg-white border-t border-slate-200">
+      <section id="feature-shared-groups" className="py-12 sm:py-20 bg-white border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* Left: Text Information */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-violet-500" />
-                <span>Feature 05 • Collaborative Shared Groups</span>
+                <span>Feature 05 • Shared Groups</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                Collaborative Shared Groups &amp; Budget Cap Settings
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+                <span className="sm:hidden">Shared Groups &amp; Budget Limits</span>
+                <span className="hidden sm:inline">Collaborative Shared Groups &amp; Budget Caps</span>
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -639,14 +643,15 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
             </div>
 
             {/* Right: Text Information */}
-            <div className="lg:col-span-6 order-1 lg:order-2 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 order-1 lg:order-2 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-sky-500" />
                 <span>Feature 06 • Design Excellence</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
-                Custom Responsive White-Themed Interface
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+                <span className="sm:hidden">Responsive Modern Design</span>
+                <span className="hidden sm:inline">Clean, Modern Responsive Design</span>
               </h2>
               
               <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -687,18 +692,18 @@ export const SevenFeatureSections: React.FC<SevenFeatureSectionsProps> = ({ onOp
       {/* ========================================================================= */}
       {/* SECTION 7: SIDEBAR NAVIGATION */}
       {/* ========================================================================= */}
-      <section id="feature-sidebar-navigation" className="py-24 bg-white border-t border-slate-200">
+      <section id="feature-sidebar-navigation" className="py-12 sm:py-20 bg-white border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             
             {/* Left: Text Information */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider">
+            <div className="lg:col-span-6 space-y-4 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-slate-500" />
                 <span>Feature 07 • Productivity Hub</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#012456] tracking-tight leading-tight text-balance">
                 Dedicated Sidebar Navigation
               </h2>
               

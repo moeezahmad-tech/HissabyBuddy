@@ -508,10 +508,19 @@ export const TeamsGroupsView: React.FC = () => {
             <button onClick={() => setActionSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
           </div>
         )}
-        <div className="text-center max-w-2xl mx-auto pt-6 pb-2">
+        <div className="text-center max-w-2xl mx-auto pt-4 pb-2">
           <div className="w-14 h-14 rounded-3xl bg-blue-50 border border-blue-200 text-[#5391FE] flex items-center justify-center mx-auto mb-4 shadow-xs"><Users className="w-7 h-7" /></div>
-          <h2 className="text-2xl sm:text-3xl font-black text-[#012456] tracking-tight">Shared Groups & Teams</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-[#012456] tracking-tight">Shared Groups &amp; Teams</h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">Manage household budgets, grocery splits, and shared project expenses.</p>
+          <div className="pt-5 flex items-center justify-center gap-3">
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="px-6 py-3 rounded-2xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Group</span>
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
           {[
@@ -592,11 +601,11 @@ export const TeamsGroupsView: React.FC = () => {
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setIsExpenseModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+            className="px-3.5 py-2 rounded-xl bg-[#5391FE] hover:bg-[#437de0] text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
             <Plus className="w-3.5 h-3.5" /><span>Add Expense</span>
           </button>
           <button onClick={() => setIsMemberModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer">
+            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95">
             <UserPlus className="w-3.5 h-3.5 text-slate-500" /><span>Add Member</span>
           </button>
           {/* Settings → navigates to full Settings page */}
@@ -604,15 +613,19 @@ export const TeamsGroupsView: React.FC = () => {
             <button
               onClick={() => navigate(`/dashboard/teams/settings?id=${currentWs?.id || ''}`)}
               title="Group Settings"
-              className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-[#012456] hover:bg-slate-50 hover:border-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-[#012456] hover:bg-slate-50 hover:border-slate-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
               <Settings2 className="w-3.5 h-3.5" />
               <span className="hidden sm:block">Settings</span>
             </button>
           )}
-          <button onClick={() => navigate('/dashboard/teams/create')} title="Create new group with full configuration"
-            className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:text-[#012456] hover:bg-slate-50 transition-colors cursor-pointer">
-            <Plus className="w-4 h-4" />
+          <button 
+            onClick={() => navigate('/dashboard/teams/create')} 
+            title="Create new group"
+            className="px-3.5 py-2 rounded-xl bg-[#012456] hover:bg-[#02337a] text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Group</span>
           </button>
         </div>
       </div>

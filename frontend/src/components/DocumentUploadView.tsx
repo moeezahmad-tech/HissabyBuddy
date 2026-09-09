@@ -4,7 +4,6 @@ import {
   FileText, 
   CheckCircle2, 
   Database, 
-  Sparkles, 
   Inbox, 
   AlertCircle,
   Eye,
@@ -269,10 +268,6 @@ export const DocumentUploadView: React.FC = () => {
             <Database className="w-4 h-4 text-[#5391FE]" />
             Uploaded Financial Documents ({documents.length})
           </h3>
-          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" />
-            Pinecone Vectors Active
-          </span>
         </div>
 
         {documents.length === 0 ? (

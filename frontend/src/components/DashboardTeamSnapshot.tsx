@@ -66,7 +66,7 @@ export const DashboardTeamSnapshot: React.FC<DashboardTeamSnapshotProps> = ({ on
                   'grid-cols-2 md:grid-cols-3 xl:grid-cols-4';
 
   return (
-    <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
+    <div className="p-4 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
 
       {/* Section Header */}
       <div className="flex items-center justify-between">
