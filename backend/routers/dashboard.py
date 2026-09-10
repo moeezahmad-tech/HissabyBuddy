@@ -46,6 +46,47 @@ class ManualTransactionRequest(BaseModel):
     currency: Optional[str] = "PKR"
     currencySymbol: Optional[str] = "Rs "
 
+class LoanRequest(BaseModel):
+    id: Optional[str] = None
+    type: str = "lent"  # 'lent' or 'borrowed'
+    personName: str
+    contact: Optional[str] = None
+    amount: float
+    repaidAmount: Optional[float] = 0.0
+    startDate: Optional[str] = None
+    dueDate: Optional[str] = None
+    category: Optional[str] = "Personal"
+    notes: Optional[str] = None
+    status: Optional[str] = "active"
+    repayments: Optional[List[Dict[str, Any]]] = []
+
+class LoanRepayRequest(BaseModel):
+    amount: float
+    notes: Optional[str] = None
+    date: Optional[str] = None
+
+class ConvertTxToLoanRequest(BaseModel):
+    transactionId: str
+    actionType: str = "new_loan"  # 'new_loan' or 'repay_loan'
+    loanType: Optional[str] = "borrowed"  # 'lent' or 'borrowed'
+    personName: Optional[str] = "Personal Contact"
+    contact: Optional[str] = None
+    category: Optional[str] = "Personal"
+    dueDate: Optional[str] = None
+    targetLoanId: Optional[str] = None
+    amount: float
+    date: Optional[str] = None
+    notes: Optional[str] = None
+    removeFromLedger: bool = True
+
+class UpdateTransactionRequest(BaseModel):
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    payee: Optional[str] = None
+    purpose: Optional[str] = None
+    date: Optional[str] = None
+
 def register_document_financials(
     uid: str, 
     filename: str, 
@@ -126,22 +167,22 @@ def get_kpi_metrics(user: Dict[str, Any] = Depends(get_current_user)):
         user_txs = user_transaction_store.get(uid, [])
         _transactions_cache[uid] = {"ts": now_ts, "data": {"userId": uid, "transactions": user_txs}}
     
-    # Calculate live spend and total budget:
-    monthly_spend = sum(abs(tx["amount"]) for tx in user_txs if tx["amount"] < 0)
-    income_sum = sum(tx["amount"] for tx in user_txs if tx["amount"] > 0)
-    base_balance = user_account_balances.get(uid, 0.0)
-
-    if income_sum > 0:
-        total_balance = max(income_sum - monthly_spend, 0.0)
-    elif base_balance > 0:
-        total_balance = base_balance
-    elif monthly_spend > 0:
-        total_balance = monthly_spend
-    else:
+    # Calculate live spend and total budget strictly from active transactions:
+    if not user_txs:
+        monthly_spend = 0.0
+        income_sum = 0.0
         total_balance = 0.0
-
-    net_savings = round(income_sum - monthly_spend, 2) if income_sum > 0 else 0.0
-    savings_rate = f"{round((net_savings / income_sum) * 100)}%" if income_sum > 0 else "0%"
+        net_savings = 0.0
+        savings_rate = "0%"
+        if user_account_balances.get(uid, 0.0) != 0.0:
+            user_account_balances[uid] = 0.0
+            storage_service.set_balance(uid, 0.0)
+    else:
+        monthly_spend = sum(abs(tx["amount"]) for tx in user_txs if tx["amount"] < 0)
+        income_sum = sum(tx["amount"] for tx in user_txs if tx["amount"] > 0)
+        total_balance = max(0.0, income_sum - monthly_spend)
+        net_savings = round(income_sum - monthly_spend, 2)
+        savings_rate = f"{round((net_savings / income_sum) * 100)}%" if income_sum > 0 else "0%"
     
     # Recurring commitments (Rent, Pocket money, Utility bills)
     rec_items = storage_service.get_recurring(uid)
@@ -653,3 +694,229 @@ def post_recurring_to_ledger(
         "message": f"Posted {target['name']} ({target.get('currencySymbol', 'Rs ')}{target['amount']:,.2f}) to ledger.",
         "transaction": new_tx
     }
+
+
+# -------------------------------------------------------------
+# LOANS & DEBTS (Udhaar, Receivables, Payables)
+# -------------------------------------------------------------
+@router.get("/loans")
+def get_user_loans(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return list of loans lent and borrowed for the user."""
+    uid = user.get("uid", "anonymous")
+    loans = storage_service.get_loans(uid)
+    return {
+        "status": "success",
+        "loans": loans
+    }
+
+@router.post("/loans")
+def create_or_update_loan(
+    req: LoanRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Add or save a loan / debt record."""
+    uid = user.get("uid", "anonymous")
+    loan_dict = req.dict()
+    saved = storage_service.add_loan(uid, loan_dict)
+    return {
+        "status": "success",
+        "message": f"Loan record for {req.personName} saved successfully.",
+        "loan": saved
+    }
+
+@router.put("/loans/{loan_id}")
+def update_loan(
+    loan_id: str,
+    req: LoanRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update existing loan record."""
+    uid = user.get("uid", "anonymous")
+    updated = storage_service.update_loan(uid, loan_id, req.dict())
+    if not updated:
+        raise HTTPException(status_code=404, detail="Loan record not found.")
+    return {"status": "success", "loan": updated}
+
+@router.post("/loans/{loan_id}/repay")
+def record_loan_repayment(
+    loan_id: str,
+    req: LoanRepayRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Record an installment or partial repayment for a loan."""
+    uid = user.get("uid", "anonymous")
+    loans = storage_service.get_loans(uid)
+    target = next((l for l in loans if l["id"] == loan_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Loan record not found.")
+
+    payment = abs(req.amount)
+    current_repaid = float(target.get("repaidAmount", 0.0))
+    total_amount = float(target.get("amount", 0.0))
+    new_repaid = min(total_amount, current_repaid + payment)
+    new_status = "settled" if new_repaid >= total_amount else "active"
+
+    reps = target.get("repayments") or []
+    rep_record = {
+        "id": f"rep-{int(datetime.now().timestamp()*1000)}",
+        "amount": payment,
+        "date": req.date or datetime.now().strftime("%Y-%m-%d"),
+        "notes": req.notes
+    }
+    reps.insert(0, rep_record)
+
+    storage_service.update_loan(uid, loan_id, {
+        "repaidAmount": new_repaid,
+        "status": new_status,
+        "repayments": reps
+    })
+
+    return {
+        "status": "success",
+        "message": f"Recorded repayment of Rs {payment:,.2f}.",
+        "repaidAmount": new_repaid,
+        "status": new_status,
+        "repayments": reps
+    }
+
+@router.delete("/loans/{loan_id}")
+def delete_user_loan(
+    loan_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete a loan record."""
+    uid = user.get("uid", "anonymous")
+    success = storage_service.delete_loan(uid, loan_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Loan record not found.")
+    return {"status": "success", "deletedId": loan_id}
+
+
+# -------------------------------------------------------------
+# TRANSACTION CONVERSION TO LOANS & DEBTS & DELETION
+# -------------------------------------------------------------
+@router.delete("/transactions")
+def delete_all_transactions(
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete all transactions from the user's ledger and reset balance metrics to 0."""
+    uid = user.get("uid", "anonymous")
+    storage_service.clear_all_transactions(uid)
+    storage_service.set_balance(uid, 0.0)
+    user_account_balances[uid] = 0.0
+    invalidate_user_cache(uid)
+    return {"status": "success", "message": "All transaction history deleted and balance reset to 0."}
+
+@router.delete("/transactions/{tx_id}")
+def delete_single_transaction(
+    tx_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete a single transaction record from ledger."""
+    uid = user.get("uid", "anonymous")
+    deleted = storage_service.delete_transaction(uid, tx_id)
+    
+    # Recalculate remaining ledger balance
+    remaining_txs = storage_service.get_transactions(uid)
+    if not remaining_txs:
+        storage_service.set_balance(uid, 0.0)
+        user_account_balances[uid] = 0.0
+    else:
+        rem_inc = sum(t["amount"] for t in remaining_txs if t["amount"] > 0)
+        rem_exp = sum(abs(t["amount"]) for t in remaining_txs if t["amount"] < 0)
+        new_bal = max(0.0, rem_inc - rem_exp)
+        storage_service.set_balance(uid, new_bal)
+        user_account_balances[uid] = new_bal
+
+    invalidate_user_cache(uid)
+    return {"status": "success", "deletedId": tx_id}
+
+@router.put("/transactions/{tx_id}")
+def update_single_transaction(
+    tx_id: str,
+    req: UpdateTransactionRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update an existing transaction."""
+    uid = user.get("uid", "anonymous")
+    updates = req.dict(exclude_unset=True)
+    updated = storage_service.update_transaction(uid, tx_id, updates)
+    invalidate_user_cache(uid)
+    return {"status": "success", "transaction": updated}
+
+@router.post("/transactions/convert-to-loan")
+def convert_transaction_to_loan(
+    req: ConvertTxToLoanRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Convert an existing transaction from the transaction history into:
+    1) A new Loan/Debt obligation (lent or borrowed), OR
+    2) An installment repayment towards an existing active loan.
+    Optionally removes the item from the general income/expense transaction ledger.
+    """
+    uid = user.get("uid", "anonymous")
+    amount = abs(req.amount)
+    
+    result_loan = None
+    if req.actionType == "new_loan":
+        new_loan_data = {
+            "id": f"loan-{int(datetime.now().timestamp()*1000)}",
+            "type": req.loanType or "borrowed",
+            "personName": req.personName or "Personal Contact",
+            "contact": req.contact,
+            "amount": amount,
+            "repaidAmount": 0.0,
+            "startDate": req.date or datetime.now().strftime("%Y-%m-%d"),
+            "dueDate": req.dueDate,
+            "category": req.category or "Personal",
+            "notes": req.notes,
+            "status": "active",
+            "repayments": []
+        }
+        result_loan = storage_service.add_loan(uid, new_loan_data)
+        message = f"Converted transaction into new {req.loanType} loan for {req.personName}."
+
+    elif req.actionType == "repay_loan":
+        if not req.targetLoanId:
+            raise HTTPException(status_code=400, detail="Target loan ID is required for repayment.")
+        loans = storage_service.get_loans(uid)
+        target = next((l for l in loans if l["id"] == req.targetLoanId), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Target loan not found.")
+
+        current_repaid = float(target.get("repaidAmount", 0.0))
+        total_amount = float(target.get("amount", 0.0))
+        new_repaid = min(total_amount, current_repaid + amount)
+        new_status = "settled" if new_repaid >= total_amount else "active"
+
+        reps = target.get("repayments") or []
+        rep_record = {
+            "id": f"rep-{int(datetime.now().timestamp()*1000)}",
+            "amount": amount,
+            "date": req.date or datetime.now().strftime("%Y-%m-%d"),
+            "notes": req.notes or f"Transferred from transaction {req.transactionId}"
+        }
+        reps.insert(0, rep_record)
+
+        result_loan = storage_service.update_loan(uid, req.targetLoanId, {
+            "repaidAmount": new_repaid,
+            "status": new_status,
+            "repayments": reps
+        })
+        message = f"Recorded Rs {amount:,.2f} repayment towards loan {target['personName']}."
+
+    # Remove from ledger if requested
+    if req.removeFromLedger and req.transactionId:
+        storage_service.delete_transaction(uid, req.transactionId)
+
+    invalidate_user_cache(uid)
+
+    return {
+        "status": "success",
+        "message": message,
+        "loan": result_loan,
+        "removedTransactionId": req.transactionId if req.removeFromLedger else None
+    }
+
+

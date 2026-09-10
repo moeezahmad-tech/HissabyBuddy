@@ -47,7 +47,7 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. Metric KPI Overview Cards (Total Balance, Monthly Spend, Net Savings, Active Budgets) */}
+      {/* 1. Metric KPI Overview Cards (Total Balance, Monthly Spend, Loans to Pay) */}
       <section aria-label="Key Performance Indicators" key={`kpi-${refreshKey}`}>
         <KPICards />
       </section>

@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import psycopg2
 from psycopg2 import pool
@@ -184,6 +185,96 @@ class PostgresStorageService:
             if conn:
                 conn.rollback()
             logger.error(f"Error removing transactions by source {source_name}: {e}")
+        finally:
+            self.put_conn(conn)
+
+    def delete_transaction(self, uid: str, tx_id: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor() as cur:
+                # Try deleting by string id or uuid or metadata id/client_id
+                cur.execute("""
+                    DELETE FROM transactions 
+                    WHERE (user_id = %s OR user_id = 'guest_user') 
+                      AND (id::text = %s OR metadata->>'id' = %s OR metadata->>'client_id' = %s);
+                """, (uid, tx_id, tx_id, tx_id))
+                deleted = cur.rowcount > 0
+                conn.commit()
+                return deleted
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error deleting transaction {tx_id} for {uid}: {e}")
+            return False
+        finally:
+            self.put_conn(conn)
+
+    def clear_all_transactions(self, uid: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM transactions 
+                    WHERE (user_id = %s OR user_id = 'guest_user');
+                """, (uid,))
+                conn.commit()
+                return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error clearing transactions for {uid}: {e}")
+            return False
+        finally:
+            self.put_conn(conn)
+
+    def update_transaction(self, uid: str, tx_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                fields = []
+                params = []
+                if "name" in updates:
+                    fields.append("description = %s")
+                    params.append(updates["name"])
+                if "amount" in updates:
+                    raw_amt = float(updates["amount"])
+                    tx_type = "income" if raw_amt > 0 else "expense"
+                    fields.append("amount = %s")
+                    params.append(abs(raw_amt))
+                    fields.append("type = %s")
+                    params.append(tx_type)
+                if "category" in updates:
+                    fields.append("category = %s")
+                    params.append(updates["category"])
+                if "status" in updates:
+                    fields.append("status = %s")
+                    params.append(updates["status"])
+
+                fields.append("metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb")
+                params.append(json.dumps(updates))
+
+                if not fields:
+                    return None
+
+                params.extend([uid, tx_id, tx_id, tx_id])
+                cur.execute(f"""
+                    UPDATE transactions
+                    SET {', '.join(fields)}
+                    WHERE (user_id = %s OR user_id = 'guest_user')
+                      AND (id::text = %s OR metadata->>'id' = %s OR metadata->>'client_id' = %s)
+                    RETURNING id, description, amount, type, category, status;
+                """, tuple(params))
+                row = cur.fetchone()
+                conn.commit()
+                return dict(row) if row else None
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating transaction {tx_id} for {uid}: {e}")
+            return None
         finally:
             self.put_conn(conn)
 
@@ -505,6 +596,196 @@ class PostgresStorageService:
             if conn:
                 conn.rollback()
             logger.error(f"Error deleting recurring item {item_id}: {e}")
+            return False
+        finally:
+            self.put_conn(conn)
+
+    # --------------------------------------------------------------------------
+    # LOANS & DEBTS (UDHAAR / RECEIVABLES & PAYABLES)
+    # --------------------------------------------------------------------------
+    def _ensure_loans_table(self, cur):
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS loans (
+                id VARCHAR(128) PRIMARY KEY,
+                user_id VARCHAR(128) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                type VARCHAR(20) NOT NULL,
+                person_name VARCHAR(150) NOT NULL,
+                contact VARCHAR(100),
+                amount NUMERIC(15, 2) NOT NULL,
+                repaid_amount NUMERIC(15, 2) DEFAULT 0.00,
+                start_date DATE NOT NULL,
+                due_date DATE,
+                category VARCHAR(50) DEFAULT 'Personal',
+                notes TEXT,
+                status VARCHAR(20) DEFAULT 'active',
+                repayments JSONB DEFAULT '[]'::jsonb,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_loans_user ON loans(user_id);
+        """)
+
+    def get_loans(self, uid: str) -> List[Dict[str, Any]]:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                self._ensure_user(cur, uid)
+                self._ensure_loans_table(cur)
+                conn.commit()
+                cur.execute("""
+                    SELECT id, type, person_name, contact, amount, repaid_amount,
+                           start_date, due_date, category, notes, status, repayments, created_at
+                    FROM loans
+                    WHERE user_id = %s OR user_id = 'guest_user'
+                    ORDER BY created_at DESC;
+                """, (uid,))
+                rows = cur.fetchall()
+                results = []
+                for r in rows:
+                    reps = r["repayments"]
+                    if isinstance(reps, str):
+                        try:
+                            reps = json.loads(reps)
+                        except Exception:
+                            reps = []
+                    results.append({
+                        "id": str(r["id"]),
+                        "type": r["type"],
+                        "personName": r["person_name"],
+                        "contact": r["contact"] or "",
+                        "amount": float(r["amount"]),
+                        "repaidAmount": float(r["repaid_amount"] or 0.0),
+                        "startDate": str(r["start_date"]),
+                        "dueDate": str(r["due_date"]) if r["due_date"] else None,
+                        "category": r["category"],
+                        "notes": r["notes"] or "",
+                        "status": r["status"],
+                        "repayments": reps if isinstance(reps, list) else [],
+                        "createdAt": str(r["created_at"])
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Error getting loans for {uid}: {e}")
+            return []
+        finally:
+            self.put_conn(conn)
+
+    def add_loan(self, uid: str, loan: Dict[str, Any]) -> Dict[str, Any]:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor() as cur:
+                self._ensure_user(cur, uid)
+                self._ensure_loans_table(cur)
+                loan_id = loan.get("id") or f"loan-{int(datetime.now().timestamp()*1000)}"
+                reps_json = json.dumps(loan.get("repayments", []))
+                cur.execute("""
+                    INSERT INTO loans (
+                        id, user_id, type, person_name, contact, amount,
+                        repaid_amount, start_date, due_date, category,
+                        notes, status, repayments
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    ON CONFLICT (id) DO UPDATE SET
+                        type = EXCLUDED.type,
+                        person_name = EXCLUDED.person_name,
+                        contact = EXCLUDED.contact,
+                        amount = EXCLUDED.amount,
+                        repaid_amount = EXCLUDED.repaid_amount,
+                        start_date = EXCLUDED.start_date,
+                        due_date = EXCLUDED.due_date,
+                        category = EXCLUDED.category,
+                        notes = EXCLUDED.notes,
+                        status = EXCLUDED.status,
+                        repayments = EXCLUDED.repayments,
+                        updated_at = CURRENT_TIMESTAMP;
+                """, (
+                    loan_id, uid, loan.get("type", "lent"), loan.get("personName", ""),
+                    loan.get("contact"), float(loan.get("amount", 0.0)),
+                    float(loan.get("repaidAmount", 0.0)), loan.get("startDate") or datetime.now().strftime("%Y-%m-%d"),
+                    loan.get("dueDate") or None, loan.get("category", "Personal"),
+                    loan.get("notes"), loan.get("status", "active"), reps_json
+                ))
+                conn.commit()
+                loan["id"] = loan_id
+                return loan
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error adding loan for {uid}: {e}")
+            return loan
+        finally:
+            self.put_conn(conn)
+
+    def update_loan(self, uid: str, loan_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                self._ensure_loans_table(cur)
+                fields = []
+                params = []
+                if "repaidAmount" in updates:
+                    fields.append("repaid_amount = %s")
+                    params.append(float(updates["repaidAmount"]))
+                if "status" in updates:
+                    fields.append("status = %s")
+                    params.append(updates["status"])
+                if "repayments" in updates:
+                    fields.append("repayments = %s::jsonb")
+                    params.append(json.dumps(updates["repayments"]))
+                if "personName" in updates:
+                    fields.append("person_name = %s")
+                    params.append(updates["personName"])
+                if "amount" in updates:
+                    fields.append("amount = %s")
+                    params.append(float(updates["amount"]))
+                if "dueDate" in updates:
+                    fields.append("due_date = %s")
+                    params.append(updates["dueDate"] or None)
+                if "notes" in updates:
+                    fields.append("notes = %s")
+                    params.append(updates["notes"])
+
+                if not fields:
+                    return None
+
+                fields.append("updated_at = CURRENT_TIMESTAMP")
+                params.extend([uid, loan_id])
+                cur.execute(f"""
+                    UPDATE loans
+                    SET {', '.join(fields)}
+                    WHERE (user_id = %s OR user_id = 'guest_user') AND id = %s
+                    RETURNING id, type, person_name, amount, repaid_amount, status;
+                """, tuple(params))
+                row = cur.fetchone()
+                conn.commit()
+                return dict(row) if row else None
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating loan {loan_id}: {e}")
+            return None
+        finally:
+            self.put_conn(conn)
+
+    def delete_loan(self, uid: str, loan_id: str) -> bool:
+        conn = None
+        try:
+            conn = self.get_conn()
+            with conn.cursor() as cur:
+                self._ensure_loans_table(cur)
+                cur.execute("""
+                    DELETE FROM loans
+                    WHERE (user_id = %s OR user_id = 'guest_user') AND id = %s;
+                """, (uid, loan_id))
+                deleted = cur.rowcount > 0
+                conn.commit()
+                return deleted
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error deleting loan {loan_id}: {e}")
             return False
         finally:
             self.put_conn(conn)

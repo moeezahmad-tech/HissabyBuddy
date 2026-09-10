@@ -10,6 +10,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useToast } from '../context/ToastContext';
 import { teamService } from '../services/teamService';
 import type { Workspace } from '../services/teamService';
+import { ConfirmModal } from './ConfirmModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ExpenseMode = 'equal_split' | 'single_payer' | 'custom_percent';
@@ -59,6 +60,8 @@ export const GroupSettingsPage: React.FC = () => {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ userId: string; name: string } | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [isOperatingMember, setIsOperatingMember] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -231,9 +234,9 @@ export const GroupSettingsPage: React.FC = () => {
     }
   };
 
-  const handleRemoveMember = async (targetUserId: string, name: string) => {
-    if (!currentWs || isOperatingMember) return;
-    if (!window.confirm(`Are you sure you want to remove "${name}" from the group?`)) return;
+  const handleConfirmRemoveMember = async () => {
+    if (!currentWs || isOperatingMember || !memberToRemove) return;
+    const { userId: targetUserId, name } = memberToRemove;
     setIsOperatingMember(true);
     try {
       await teamService.removeMember(currentWs.id, targetUserId, user?.token);
@@ -244,16 +247,17 @@ export const GroupSettingsPage: React.FC = () => {
       toast.error(err.message || 'Failed to remove member.');
     } finally {
       setIsOperatingMember(false);
+      setMemberToRemove(null);
     }
   };
 
-  const handleLeaveGroup = async () => {
+  const handleConfirmLeaveGroup = async () => {
     if (!currentWs || isLeaving) return;
-    if (!window.confirm(`Are you sure you want to leave "${currentWs.name}"?`)) return;
     setIsLeaving(true);
     try {
       await teamService.leaveWorkspace(currentWs.id, user?.token);
       toast.success('You have left the group.');
+      setShowLeaveConfirm(false);
       navigate('/dashboard/teams', { replace: true });
     } catch (err: any) {
       toast.error(err.message || 'Failed to leave group.');
@@ -544,7 +548,7 @@ export const GroupSettingsPage: React.FC = () => {
                         </select>
                         <button
                           disabled={isOperatingMember}
-                          onClick={() => handleRemoveMember(m.user_id, m.display_name || m.email || 'Member')}
+                          onClick={() => setMemberToRemove({ userId: m.user_id, name: m.display_name || m.email || 'Member' })}
                           className="text-[11px] font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition-colors cursor-pointer"
                         >
                           Remove
@@ -615,7 +619,7 @@ export const GroupSettingsPage: React.FC = () => {
             <p className="text-xs font-black text-orange-700">Leave Group</p>
             <p className="text-[10px] text-orange-600">Remove yourself from this shared group ledger and clear all local access.</p>
             <button
-              onClick={handleLeaveGroup}
+              onClick={() => setShowLeaveConfirm(true)}
               disabled={isLeaving}
               className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
             >
@@ -626,6 +630,45 @@ export const GroupSettingsPage: React.FC = () => {
         )}
       </div>
 
+      {/* Remove Member Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={Boolean(memberToRemove)}
+        onClose={() => {
+          if (!isOperatingMember) setMemberToRemove(null);
+        }}
+        onConfirm={handleConfirmRemoveMember}
+        title="Remove Member"
+        message={
+          memberToRemove ? (
+            <span>
+              Are you sure you want to remove <strong className="text-slate-900 dark:text-white font-semibold">"{memberToRemove.name}"</strong> from this shared group? They will lose access to shared transactions and budgets.
+            </span>
+          ) : null
+        }
+        confirmText="Remove Member"
+        isLoading={isOperatingMember}
+        variant="danger"
+      />
+
+      {/* Leave Group Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={showLeaveConfirm}
+        onClose={() => {
+          if (!isLeaving) setShowLeaveConfirm(false);
+        }}
+        onConfirm={handleConfirmLeaveGroup}
+        title="Leave Group"
+        message={
+          currentWs ? (
+            <span>
+              Are you sure you want to leave <strong className="text-slate-900 dark:text-white font-semibold">"{currentWs.name}"</strong>? You will no longer be able to view or add shared records.
+            </span>
+          ) : null
+        }
+        confirmText="Leave Group"
+        isLoading={isLeaving}
+        variant="warning"
+      />
     </div>
   );
 };

@@ -18,6 +18,8 @@ export const STORAGE_KEYS = {
   PROFILE: 'hissaby_cached_profile',
   WORKSPACES: 'hissaby_cached_workspaces',
   SPENDING_TRENDS: 'hissaby_cached_trends',
+  LOANS: 'hissaby_cached_loans_v1',
+  MOVED_TO_LOAN_IDS: 'hissaby_moved_to_loan_ids_v1',
 } as const;
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];

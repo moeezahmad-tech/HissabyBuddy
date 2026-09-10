@@ -8,6 +8,8 @@ import {
   RefreshCw 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ChatMessage {
   sender: 'user' | 'assistant';
@@ -18,7 +20,9 @@ interface ChatMessage {
 
 export const AIFinancialAssistantView: React.FC = () => {
   const { user } = useAuth();
+  const toast = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const CHAT_STORAGE_KEY = 'hissaby_chat_history';
 
@@ -289,20 +293,7 @@ export const AIFinancialAssistantView: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm('Clear conversation history?')) {
-              setMessages([
-                {
-                  sender: 'assistant',
-                  text: 'Hello! I am your **Hissaby Buddy Financial Copilot**. I have access to your live financial statements, verified OCR records, and budget metrics. Ask me anything about your balance, expenses, vendors, or salary!',
-                  time: 'Just now'
-                }
-              ]);
-              try {
-                localStorage.removeItem(CHAT_STORAGE_KEY);
-              } catch {}
-            }
-          }}
+          onClick={() => setShowClearConfirm(true)}
           className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 px-2.5 py-1 rounded-lg hover:bg-slate-200/60 transition-all cursor-pointer shrink-0"
         >
           Clear Chat
@@ -396,6 +387,30 @@ export const AIFinancialAssistantView: React.FC = () => {
           </button>
         </form>
       </div>
+
+      {/* Custom Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={() => {
+          setMessages([
+            {
+              sender: 'assistant',
+              text: 'Hello! I am your **Hissaby Buddy Financial Copilot**. I have access to your live financial statements, verified OCR records, and budget metrics. Ask me anything about your balance, expenses, vendors, or salary!',
+              time: 'Just now'
+            }
+          ]);
+          try {
+            localStorage.removeItem(CHAT_STORAGE_KEY);
+          } catch {}
+          setShowClearConfirm(false);
+          toast.info('Chat history cleared.', { title: 'Conversation Reset' });
+        }}
+        title="Clear Conversation History"
+        message="Are you sure you want to clear your chat messages? This will reset the current assistant thread."
+        confirmText="Clear History"
+        variant="danger"
+      />
     </div>
   );
 };

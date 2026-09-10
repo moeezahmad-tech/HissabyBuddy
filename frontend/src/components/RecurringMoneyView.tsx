@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
+import { ConfirmModal } from './ConfirmModal';
 import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 export interface RecurringItem {
@@ -59,6 +61,7 @@ const PRESET_TEMPLATES = [
 export const RecurringMoneyView: React.FC = () => {
   const { user } = useAuth();
   const { currentCurrency, formatAmount } = useCurrency();
+  const toast = useToast();
 
   // Instant 0ms render from dual-cache
   const [items, setItems] = useState<RecurringItem[]>(() =>
@@ -68,6 +71,8 @@ export const RecurringMoneyView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'expense' | 'income'>('all');
   const [postingId, setPostingId] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<RecurringItem | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
@@ -191,8 +196,14 @@ export const RecurringMoneyView: React.FC = () => {
     }
   };
 
-  const handleDeleteItem = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove recurring '${name}'?`)) return;
+  const handleDeleteClick = (item: RecurringItem) => {
+    setItemToDelete(item);
+  };
+
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    const { id, name } = itemToDelete;
+    setIsDeletingItem(true);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -209,8 +220,9 @@ export const RecurringMoneyView: React.FC = () => {
     const updated = items.filter(i => i.id !== id);
     setItems(updated);
     appStorage.save(STORAGE_KEYS.RECURRING, updated);
-    setSuccessToast(`Deleted ${name}.`);
-    setTimeout(() => setSuccessToast(null), 3000);
+    toast.success(`Removed recurring commitment for "${name}".`, { title: 'Recurring Rule Deleted' });
+    setIsDeletingItem(false);
+    setItemToDelete(null);
   };
 
   const handlePostToLedger = async (item: RecurringItem) => {
@@ -579,9 +591,9 @@ export const RecurringMoneyView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleDeleteItem(item.id, item.name)}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      onClick={() => handleDeleteClick(item)}
                       title="Remove this recurring item"
+                      className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -763,6 +775,25 @@ export const RecurringMoneyView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Custom Delete Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={Boolean(itemToDelete)}
+        onClose={() => {
+          if (!isDeletingItem) setItemToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteItem}
+        title="Remove Recurring Commitment"
+        message={
+          itemToDelete ? (
+            <span>
+              Are you sure you want to remove recurring rule for <strong className="text-slate-900 dark:text-white font-semibold">"{itemToDelete.name}"</strong> ({formatAmount(itemToDelete.amount)})?
+            </span>
+          ) : null
+        }
+        confirmText="Remove Rule"
+        isLoading={isDeletingItem}
+        variant="danger"
+      />
     </div>
   );
 };

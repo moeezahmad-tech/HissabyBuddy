@@ -4,6 +4,7 @@ import { useAuth, PROFILE_CACHE_KEY, syncProfileCache } from '../context/AuthCon
 import { useToast } from '../context/ToastContext';
 import { useAppUpdate } from '../hooks/useAppUpdate';
 import CurrencySelector from './CurrencySelector';
+import { ConfirmModal } from './ConfirmModal';
 
 const getCachedProfile = () => {
   try {
@@ -31,6 +32,7 @@ export const SettingsView: React.FC = () => {
   
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [showReloadConfirm, setShowReloadConfirm] = useState(false);
 
   const {
     version,
@@ -388,11 +390,7 @@ export const SettingsView: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm('Force reload and clear all cached web app assets?')) {
-                    forceRefresh();
-                  }
-                }}
+                onClick={() => setShowReloadConfirm(true)}
                 className="w-full text-center text-[11px] text-slate-400 hover:text-slate-600 transition-colors py-1 cursor-pointer font-medium"
               >
                 Force Reload &amp; Clear Cache
@@ -408,6 +406,20 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Custom Confirmation Modal for Force Reload */}
+      <ConfirmModal
+        isOpen={showReloadConfirm}
+        onClose={() => setShowReloadConfirm(false)}
+        onConfirm={() => {
+          setShowReloadConfirm(false);
+          forceRefresh();
+        }}
+        title="Force Reload & Clear Cache"
+        message="Are you sure you want to force reload and clear all cached web app assets? The app will refresh and load the latest bundle."
+        confirmText="Reload App"
+        variant="warning"
+      />
     </div>
   );
 };

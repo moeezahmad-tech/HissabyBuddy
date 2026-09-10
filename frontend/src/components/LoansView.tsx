@@ -14,12 +14,24 @@ import {
   ReceiptText
 } from 'lucide-react';
 import { useCurrency } from '../context/CurrencyContext';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { ConfirmModal } from './ConfirmModal';
+import { appStorage, STORAGE_KEYS } from '../services/appStorage';
 
 export interface RepaymentRecord {
   id: string;
   amount: number;
   date: string;
   notes?: string;
+}
+
+export interface LoanSubItem {
+  id: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  category?: string;
 }
 
 export interface LoanItem {
@@ -36,48 +48,186 @@ export interface LoanItem {
   status: 'active' | 'settled';
   repayments: RepaymentRecord[];
   createdAt: string;
+  breakdown?: LoanSubItem[];
 }
 
-const STORAGE_KEY = 'hissaby_loans_records_v2';
-const MOCK_KEYWORDS = ['hamza', 'meezan', 'usman', 'colleague', 'personal facility'];
+/**
+ * Normalizes person name:
+ * - Trims whitespace
+ * - Strips conversational prefixes like "From ", "To ", "Payee: "
+ * - Converts to uppercase
+ */
+export const normalizePersonName = (rawName?: string): string => {
+  if (!rawName) return '';
+  let cleaned = rawName.trim();
+  cleaned = cleaned.replace(/^(from|to|payee:?)\s+/i, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  return cleaned.toUpperCase();
+};
+
+/**
+ * Combines/merges loans that have the same person name (case-insensitive uppercase)
+ * and the same flow direction ('lent' or 'borrowed').
+ * Preserves individual breakdown entries and consolidates repayments.
+ */
+export const consolidateLoans = (rawLoans: LoanItem[]): LoanItem[] => {
+  if (!rawLoans || !Array.isArray(rawLoans)) return [];
+
+  const map = new Map<string, LoanItem>();
+
+  for (const item of rawLoans) {
+    const normName = normalizePersonName(item.personName) || 'UNKNOWN';
+    const key = `${normName}__${item.type}`;
+
+    const existing = map.get(key);
+    const itemSubItems: LoanSubItem[] = item.breakdown && item.breakdown.length > 0
+      ? [...item.breakdown]
+      : [{
+          id: item.id,
+          amount: item.amount,
+          date: item.startDate || new Date().toISOString().split('T')[0],
+          notes: item.notes,
+          category: item.category,
+        }];
+
+    if (!existing) {
+      map.set(key, {
+        ...item,
+        personName: normName,
+        breakdown: itemSubItems,
+        repayments: Array.isArray(item.repayments) ? [...item.repayments] : []
+      });
+    } else {
+      // Merge with existing record for this person!
+      const combinedBreakdown = [...(existing.breakdown || []), ...itemSubItems];
+      const totalAmount = combinedBreakdown.reduce((sum, b) => sum + (b.amount || 0), 0);
+
+      // Merge and deduplicate repayments
+      const allReps = [...(existing.repayments || []), ...(item.repayments || [])];
+      const repMap = new Map<string, RepaymentRecord>();
+      for (const r of allReps) {
+        if (!repMap.has(r.id)) {
+          repMap.set(r.id, r);
+        }
+      }
+      const uniqueReps = Array.from(repMap.values()).sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+      const totalRepaid = uniqueReps.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+      const notesSet = new Set<string>();
+      if (existing.notes) notesSet.add(existing.notes);
+      if (item.notes) notesSet.add(item.notes);
+
+      const isSettled = totalRepaid >= totalAmount;
+
+      map.set(key, {
+        ...existing,
+        personName: normName,
+        amount: totalAmount,
+        repaidAmount: totalRepaid,
+        status: isSettled ? 'settled' : 'active',
+        dueDate: item.dueDate || existing.dueDate,
+        contact: item.contact || existing.contact,
+        notes: Array.from(notesSet).join(' • ') || undefined,
+        breakdown: combinedBreakdown,
+        repayments: uniqueReps
+      });
+    }
+  }
+
+  return Array.from(map.values());
+};
 
 export const LoansView: React.FC = () => {
+  const { user } = useAuth();
   const { formatAmount, currentCurrency } = useCurrency();
+  const toast = useToast();
 
   const [loans, setLoans] = useState<LoanItem[]>(() => {
+    // 1. Unified appStorage (synchronous local storage 0ms mount)
+    const cached = appStorage.getInitial<LoanItem[]>(STORAGE_KEYS.LOANS, []);
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      const consolidated = consolidateLoans(cached);
+      appStorage.save(STORAGE_KEYS.LOANS, consolidated);
+      return consolidated;
+    }
+    // 2. Migration fallback from legacy local keys
     try {
-      // Unconditionally purge legacy storage key that may have cached mock loans in browser
-      localStorage.removeItem('hissaby_loans_records_v1');
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(l => 
-            !MOCK_KEYWORDS.some(k => l.personName?.toLowerCase().includes(k)) &&
-            !l.id.startsWith('loan-')
-          );
+      const legacyV2 = localStorage.getItem('hissaby_loans_records_v2');
+      if (legacyV2) {
+        const parsed = JSON.parse(legacyV2);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const consolidated = consolidateLoans(parsed);
+          appStorage.save(STORAGE_KEYS.LOANS, consolidated);
+          return consolidated;
         }
       }
     } catch {}
     return [];
   });
 
-  // Ensure any cached in-memory mock records are purged on mount
+  // Track expanded breakdown on cards
+  const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
+
+  // Hydrate from high-capacity IndexedDB & subscribe to cross-view updates
   useEffect(() => {
-    try {
-      localStorage.removeItem('hissaby_loans_records_v1');
-    } catch {}
-    setLoans(prev => prev.filter(l => 
-      !MOCK_KEYWORDS.some(k => l.personName?.toLowerCase().includes(k)) &&
-      !l.id.startsWith('loan-')
-    ));
+    appStorage.hydrateFromIndexedDB<LoanItem[]>(STORAGE_KEYS.LOANS, (dbLoans) => {
+      if (dbLoans && Array.isArray(dbLoans) && dbLoans.length > 0) {
+        const consolidated = consolidateLoans(dbLoans);
+        setLoans(consolidated);
+        appStorage.save(STORAGE_KEYS.LOANS, consolidated);
+      }
+    });
+
+    const unsubscribe = appStorage.subscribe<LoanItem[]>(STORAGE_KEYS.LOANS, (newLoans) => {
+      if (Array.isArray(newLoans)) {
+        const consolidated = consolidateLoans(newLoans);
+        setLoans(consolidated);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
-  useEffect(() => {
+  // Sync with Backend Cloud DB
+  const fetchBackendLoans = async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(loans));
-    } catch {}
-  }, [loans]);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+      if (user?.uid) headers['X-User-Id'] = user.uid;
+
+      const res = await fetch(`${apiUrl}/api/dashboard/loans`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && Array.isArray(data.loans)) {
+          if (data.loans.length > 0) {
+            const consolidated = consolidateLoans(data.loans);
+            setLoans(consolidated);
+            appStorage.save(STORAGE_KEYS.LOANS, consolidated);
+          } else if (loans.length > 0) {
+            // Push existing local items up to server
+            for (const item of loans) {
+              fetch(`${apiUrl}/api/dashboard/loans`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(item),
+              }).catch(() => null);
+            }
+          }
+        }
+      }
+    } catch {
+      // Offline fallback: keep cached data
+    }
+  };
+
+  useEffect(() => {
+    fetchBackendLoans();
+  }, [user]);
 
   // Filters & Search
   const [filterType, setFilterType] = useState<'all' | 'lent' | 'borrowed' | 'settled'>('all');
@@ -88,6 +238,8 @@ export const LoansView: React.FC = () => {
   const [repayingLoan, setRepayingLoan] = useState<LoanItem | null>(null);
   const [repaymentAmount, setRepaymentAmount] = useState('');
   const [repaymentNotes, setRepaymentNotes] = useState('');
+  const [loanToDelete, setLoanToDelete] = useState<LoanItem | null>(null);
+  const [isDeletingLoan, setIsDeletingLoan] = useState(false);
 
   // Add Loan Form state
   const [formType, setFormType] = useState<'lent' | 'borrowed'>('lent');
@@ -130,26 +282,103 @@ export const LoansView: React.FC = () => {
   const handleAddLoan = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(formAmount);
-    if (!formName.trim() || isNaN(amt) || amt <= 0) return;
+    const cleanName = normalizePersonName(formName);
+    if (!cleanName || isNaN(amt) || amt <= 0) return;
 
-    const newLoan: LoanItem = {
-      id: 'loan-' + Date.now(),
-      type: formType,
-      personName: formName.trim(),
-      contact: formContact.trim() || undefined,
-      amount: amt,
-      repaidAmount: 0,
-      startDate: formStartDate || new Date().toISOString().split('T')[0],
-      dueDate: formDueDate || undefined,
-      category: formCategory,
-      notes: formNotes.trim() || undefined,
-      status: 'active',
-      repayments: [],
-      createdAt: new Date().toISOString()
-    };
+    // Check if an existing loan with this same person and type already exists
+    const existingIndex = loans.findIndex(
+      l => normalizePersonName(l.personName) === cleanName && l.type === formType && l.status === 'active'
+    );
 
-    setLoans(prev => [newLoan, ...prev]);
+    let updated: LoanItem[];
+
+    if (existingIndex !== -1) {
+      // Combine into existing loan
+      const existing = loans[existingIndex];
+      const newSubItem: LoanSubItem = {
+        id: 'sub-' + Date.now(),
+        amount: amt,
+        date: formStartDate || new Date().toISOString().split('T')[0],
+        notes: formNotes.trim() || undefined,
+        category: formCategory,
+      };
+      const newBreakdown = [
+        ...(existing.breakdown || [{
+          id: existing.id,
+          amount: existing.amount,
+          date: existing.startDate,
+          notes: existing.notes,
+          category: existing.category,
+        }]),
+        newSubItem
+      ];
+      const totalAmount = newBreakdown.reduce((sum, b) => sum + b.amount, 0);
+      const combinedNotes = [existing.notes, formNotes.trim()].filter(Boolean).join(' • ');
+
+      const mergedLoan: LoanItem = {
+        ...existing,
+        personName: cleanName,
+        amount: totalAmount,
+        dueDate: formDueDate || existing.dueDate,
+        contact: formContact.trim() || existing.contact,
+        notes: combinedNotes || undefined,
+        breakdown: newBreakdown,
+      };
+
+      updated = loans.map((l, idx) => idx === existingIndex ? mergedLoan : l);
+    } else {
+      // Create new loan
+      const newLoan: LoanItem = {
+        id: 'loan-' + Date.now(),
+        type: formType,
+        personName: cleanName,
+        contact: formContact.trim() || undefined,
+        amount: amt,
+        repaidAmount: 0,
+        startDate: formStartDate || new Date().toISOString().split('T')[0],
+        dueDate: formDueDate || undefined,
+        category: formCategory,
+        notes: formNotes.trim() || undefined,
+        status: 'active',
+        repayments: [],
+        createdAt: new Date().toISOString(),
+        breakdown: [{
+          id: 'sub-' + Date.now(),
+          amount: amt,
+          date: formStartDate || new Date().toISOString().split('T')[0],
+          notes: formNotes.trim() || undefined,
+          category: formCategory,
+        }]
+      };
+      updated = [newLoan, ...loans];
+    }
+
+    const consolidated = consolidateLoans(updated);
+    setLoans(consolidated);
+    appStorage.save(STORAGE_KEYS.LOANS, consolidated);
     setIsAddModalOpen(false);
+
+    // Sync to backend asynchronously
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+    if (user?.uid) headers['X-User-Id'] = user.uid;
+
+    const savedTarget = consolidated.find(l => normalizePersonName(l.personName) === cleanName);
+    if (savedTarget) {
+      fetch(`${apiUrl}/api/dashboard/loans`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(savedTarget),
+      }).catch(() => null);
+    }
+
+    toast.success(
+      existingIndex !== -1
+        ? `Consolidated entry into ${cleanName}'s record.`
+        : `New loan record for ${cleanName} created.`,
+      { title: 'Loan Saved' }
+    );
 
     // Reset Form
     setFormName('');
@@ -175,17 +404,36 @@ export const LoansView: React.FC = () => {
       notes: repaymentNotes.trim() || undefined
     };
 
-    setLoans(prev => prev.map(l => {
+    const updated = loans.map(l => {
       if (l.id !== repayingLoan.id) return l;
       const newRepaid = l.repaidAmount + actualPay;
-      const newStatus = newRepaid >= l.amount ? 'settled' : 'active';
+      const newStatus: 'active' | 'settled' = newRepaid >= l.amount ? 'settled' : 'active';
       return {
         ...l,
         repaidAmount: newRepaid,
         status: newStatus,
         repayments: [record, ...l.repayments]
       };
-    }));
+    });
+
+    setLoans(updated);
+    appStorage.save(STORAGE_KEYS.LOANS, updated);
+
+    // Sync to backend
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+    if (user?.uid) headers['X-User-Id'] = user.uid;
+
+    fetch(`${apiUrl}/api/dashboard/loans/${repayingLoan.id}/repay`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ amount: actualPay, notes: repaymentNotes.trim() || undefined }),
+    }).catch(() => null);
+
+    toast.success(`Payment of ${formatAmount(actualPay)} recorded for ${repayingLoan.personName}.`, {
+      title: 'Repayment Recorded',
+    });
 
     setRepayingLoan(null);
     setRepaymentAmount('');
@@ -193,9 +441,11 @@ export const LoansView: React.FC = () => {
   };
 
   const handleMarkSettled = (id: string) => {
-    setLoans(prev => prev.map(l => {
+    let finalPayAmt = 0;
+    const updated = loans.map(l => {
       if (l.id !== id) return l;
       const remaining = l.amount - l.repaidAmount;
+      finalPayAmt = remaining;
       const finalRepayment: RepaymentRecord = {
         id: 'rep-' + Date.now(),
         amount: remaining,
@@ -205,15 +455,60 @@ export const LoansView: React.FC = () => {
       return {
         ...l,
         repaidAmount: l.amount,
-        status: 'settled',
+        status: 'settled' as const,
         repayments: remaining > 0 ? [finalRepayment, ...l.repayments] : l.repayments
       };
-    }));
+    });
+
+    setLoans(updated);
+    appStorage.save(STORAGE_KEYS.LOANS, updated);
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+    if (user?.uid) headers['X-User-Id'] = user.uid;
+
+    fetch(`${apiUrl}/api/dashboard/loans/${id}/repay`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ amount: finalPayAmt, notes: 'Marked fully settled' }),
+    }).catch(() => null);
+
+    toast.success(`Loan record marked as fully settled!`, {
+      title: 'Loan Settled',
+    });
   };
 
-  const handleDeleteLoan = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this loan record?')) {
-      setLoans(prev => prev.filter(l => l.id !== id));
+  const handleDeleteLoan = (loan: LoanItem) => {
+    setLoanToDelete(loan);
+  };
+
+  const handleConfirmDeleteLoan = async () => {
+    if (!loanToDelete) return;
+    const id = loanToDelete.id;
+    setIsDeletingLoan(true);
+
+    const updated = loans.filter(l => l.id !== id);
+    setLoans(updated);
+    appStorage.save(STORAGE_KEYS.LOANS, updated);
+
+    toast.success(`Loan record for ${loanToDelete.personName} deleted.`, {
+      title: 'Loan Removed',
+    });
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const headers: Record<string, string> = {};
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+    if (user?.uid) headers['X-User-Id'] = user.uid;
+
+    try {
+      await fetch(`${apiUrl}/api/dashboard/loans/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+    } catch {} finally {
+      setIsDeletingLoan(false);
+      setLoanToDelete(null);
     }
   };
 
@@ -459,7 +754,7 @@ export const LoansView: React.FC = () => {
                         {loan.category}
                       </span>
                       <button
-                        onClick={() => handleDeleteLoan(loan.id)}
+                        onClick={() => handleDeleteLoan(loan)}
                         title="Delete Record"
                         className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-opacity cursor-pointer"
                       >
@@ -468,10 +763,18 @@ export const LoansView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Person or Institution Name */}
-                  <h3 className="text-base font-black text-[#012456] tracking-tight truncate">
-                    {loan.personName}
-                  </h3>
+                  {/* Person or Institution Name (All Uppercase) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-black text-[#012456] tracking-tight truncate uppercase">
+                      {loan.personName}
+                    </h3>
+
+                    {loan.breakdown && loan.breakdown.length > 1 && (
+                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                        {loan.breakdown.length} Combined
+                      </span>
+                    )}
+                  </div>
 
                   {loan.contact && (
                     <p className="text-[11px] text-slate-400 truncate mt-0.5">
@@ -548,6 +851,38 @@ export const LoansView: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Combined Entries Management Drawer */}
+                  {loan.breakdown && loan.breakdown.length > 1 && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">
+                          {loan.breakdown.length} Consolidated Loan Entries
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedLoanId(expandedLoanId === loan.id ? null : loan.id)}
+                          className="text-[10px] font-bold text-[#5391FE] hover:underline cursor-pointer"
+                        >
+                          {expandedLoanId === loan.id ? 'Hide Entries ▲' : 'Manage & View ▼'}
+                        </button>
+                      </div>
+
+                      {expandedLoanId === loan.id && (
+                        <div className="mt-2 space-y-1.5 max-h-36 overflow-y-auto p-2 bg-purple-50/60 rounded-xl border border-purple-100 animate-in fade-in zoom-in-95 duration-150">
+                          {loan.breakdown.map((item, idx) => (
+                            <div key={item.id || idx} className="p-2 bg-white rounded-lg border border-purple-100/70 flex items-center justify-between text-[11px]">
+                              <div className="truncate mr-2">
+                                <p className="font-bold text-slate-800 text-[11px] truncate">{item.notes || `Entry #${idx + 1}`}</p>
+                                <span className="text-[10px] text-slate-400">{item.date} {item.category && `• ${item.category}`}</span>
+                              </div>
+                              <span className="font-black text-slate-900 shrink-0">{formatAmount(item.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
 
                 {/* Bottom Action Controls */}
@@ -561,6 +896,21 @@ export const LoansView: React.FC = () => {
                       >
                         <ReceiptText className="w-3.5 h-3.5" />
                         <span>Record Payment</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormName(loan.personName);
+                          setFormType(loan.type);
+                          setFormCategory(loan.category);
+                          setIsAddModalOpen(true);
+                        }}
+                        className="py-2 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        title="Add another transaction/amount to this person"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5 text-[#5391FE]" />
+                        <span className="hidden sm:inline">Add Entry</span>
                       </button>
 
                       <button
@@ -649,10 +999,16 @@ export const LoansView: React.FC = () => {
                   type="text"
                   required
                   value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                  placeholder="e.g. Ali Raza or HBL Bank"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20"
+                  onChange={e => setFormName(e.target.value.toUpperCase())}
+                  placeholder="e.g. FATHER or HBL BANK"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 uppercase font-semibold focus:outline-hidden focus:border-[#5391FE] focus:ring-2 focus:ring-[#5391FE]/20"
                 />
+                {formName.trim() && loans.some(l => normalizePersonName(l.personName) === normalizePersonName(formName) && l.type === formType && l.status === 'active') && (
+                  <div className="mt-1.5 p-2 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-700 font-medium flex items-center gap-1.5 animate-in fade-in duration-150">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+                    <span>An active record for <strong>{normalizePersonName(formName)}</strong> exists. Submitting will combine this amount into their account.</span>
+                  </div>
+                )}
               </div>
 
               {/* Amount */}
@@ -839,6 +1195,29 @@ export const LoansView: React.FC = () => {
         </div>
       )}
 
+      {/* Custom Delete Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={Boolean(loanToDelete)}
+        onClose={() => {
+          if (!isDeletingLoan) setLoanToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteLoan}
+        title="Delete Loan Record"
+        message={
+          loanToDelete ? (
+            <span>
+              Are you sure you want to delete the loan record for{' '}
+              <strong className="text-slate-900 dark:text-white font-semibold uppercase">
+                "{loanToDelete.personName}"
+              </strong>{' '}
+              ({formatAmount(loanToDelete.amount)})? This will permanently remove this loan and its history.
+            </span>
+          ) : null
+        }
+        confirmText="Delete Loan"
+        isLoading={isDeletingLoan}
+        variant="danger"
+      />
     </div>
   );
 };

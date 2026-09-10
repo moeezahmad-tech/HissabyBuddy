@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
+import { ConfirmModal } from './ConfirmModal';
 
 interface IndexedDoc {
   id: string;
@@ -42,6 +44,7 @@ interface IndexedDoc {
 export const DocumentUploadView: React.FC = () => {
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
+  const toast = useToast();
   const [dragActive, setDragActive] = useState(false);
   const [documents, setDocuments] = useState<IndexedDoc[]>(() => {
     try {
@@ -52,6 +55,7 @@ export const DocumentUploadView: React.FC = () => {
   });
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<IndexedDoc | null>(null);
@@ -137,10 +141,13 @@ export const DocumentUploadView: React.FC = () => {
     }
   };
 
-  const handleDelete = async (docId: string, docName: string) => {
-    if (!confirm(`Are you sure you want to delete '${docName}'? This will remove its vectors from Pinecone and its records from your ledger.`)) {
-      return;
-    }
+  const handleDelete = (docId: string, docName: string) => {
+    setDocToDelete({ id: docId, name: docName });
+  };
+
+  const handleConfirmDeleteDoc = async () => {
+    if (!docToDelete) return;
+    const { id: docId, name: docName } = docToDelete;
 
     setDeletingId(docId);
     setError(null);
@@ -158,18 +165,19 @@ export const DocumentUploadView: React.FC = () => {
 
       if (res.ok) {
         setDocuments(prev => prev.filter(d => d.id !== docId));
-        setSuccessMsg(`Successfully deleted '${docName}' and updated your financial ledger.`);
+        toast.success(`Deleted '${docName}' and updated ledger.`, { title: 'Document Removed' });
         if (previewDoc?.id === docId) {
           setPreviewDoc(null);
         }
       } else {
         const errData = await res.json().catch(() => ({ detail: 'Failed to delete document' }));
-        setError(errData.detail || 'Could not delete document.');
+        toast.error(errData.detail || 'Could not delete document.');
       }
     } catch {
-      setError('Network error: Unable to contact backend to delete document.');
+      toast.error('Unable to contact backend to delete document.');
     } finally {
       setDeletingId(null);
+      setDocToDelete(null);
     }
   };
 
@@ -511,6 +519,26 @@ export const DocumentUploadView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Custom Delete Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={Boolean(docToDelete)}
+        onClose={() => {
+          if (!deletingId) setDocToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteDoc}
+        title="Delete Document"
+        message={
+          docToDelete ? (
+            <span>
+              Are you sure you want to delete <strong className="text-slate-900 dark:text-white font-semibold">'{docToDelete.name}'</strong>? This will remove its semantic embeddings and all extracted ledger records.
+            </span>
+          ) : null
+        }
+        confirmText="Delete Document"
+        isLoading={Boolean(deletingId)}
+        variant="danger"
+      />
     </div>
   );
 };

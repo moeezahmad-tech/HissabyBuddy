@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, AlertCircle, PiggyBank } from 'lucide-react';
+import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, AlertCircle, HandCoins } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES, type CurrencyCode } from '../context/CurrencyContext';
 
@@ -32,17 +33,32 @@ const DEFAULT_METRICS: MetricsData = {
 };
 
 export const KPICards: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { currentCurrency, setCurrency } = useCurrency();
 
   // Instant 0ms render from dual-cache
   const [metrics, setMetrics] = useState<MetricsData>(() => {
     const init = appStorage.getInitial<MetricsData>(STORAGE_KEYS.METRICS, DEFAULT_METRICS);
+    const cachedTxs = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+    if (cachedTxs.length === 0) {
+      return {
+        ...init,
+        totalBalance: 0,
+        monthlySpend: 0,
+        totalIncome: 0,
+        netSavings: 0,
+      };
+    }
     if (init && init.totalBalance === 50000) {
       init.totalBalance = 0;
     }
     return init;
   });
+
+  const [loans, setLoans] = useState<any[]>(() =>
+    appStorage.getInitial<any[]>(STORAGE_KEYS.LOANS, [])
+  );
   const [hasError, setHasError] = useState<boolean>(false);
 
   useEffect(() => {
@@ -51,18 +67,87 @@ export const KPICards: React.FC = () => {
     // Check IndexedDB if localStorage was empty or needs hydration
     appStorage.hydrateFromIndexedDB<MetricsData>(STORAGE_KEYS.METRICS, (dbMetrics) => {
       if (dbMetrics && !isCancelled) {
-        setMetrics(dbMetrics);
+        const cachedTxs = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+        if (cachedTxs.length === 0) {
+          setMetrics({
+            ...dbMetrics,
+            totalBalance: 0,
+            monthlySpend: 0,
+            totalIncome: 0,
+            netSavings: 0,
+          });
+        } else {
+          setMetrics(dbMetrics);
+        }
       }
     });
 
-    // Real-time synchronization when transaction is logged or metrics update
-    const unsubscribe = appStorage.subscribe<MetricsData>(STORAGE_KEYS.METRICS, (newMetrics) => {
+    appStorage.hydrateFromIndexedDB<any[]>(STORAGE_KEYS.LOANS, (dbLoans) => {
+      if (dbLoans && Array.isArray(dbLoans) && !isCancelled) {
+        setLoans(dbLoans);
+      }
+    });
+
+    // Real-time synchronization when transaction is logged, deleted, or metrics update
+    const unsubscribeMetrics = appStorage.subscribe<MetricsData>(STORAGE_KEYS.METRICS, (newMetrics) => {
       if (newMetrics && !isCancelled) {
-        setMetrics(newMetrics);
+        const cachedTxs = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+        if (cachedTxs.length === 0) {
+          setMetrics({
+            ...newMetrics,
+            totalBalance: 0,
+            monthlySpend: 0,
+            totalIncome: 0,
+            netSavings: 0,
+          });
+        } else {
+          setMetrics(newMetrics);
+        }
       }
     });
 
-    const fetchMetrics = async () => {
+    const unsubscribeLoans = appStorage.subscribe<any[]>(STORAGE_KEYS.LOANS, (newLoans) => {
+      if (Array.isArray(newLoans) && !isCancelled) {
+        setLoans(newLoans);
+      }
+    });
+
+    const unsubscribeTxs = appStorage.subscribe<any[]>(STORAGE_KEYS.TRANSACTIONS, (txs) => {
+      if (!isCancelled && Array.isArray(txs)) {
+        if (txs.length === 0) {
+          setMetrics((prev) => ({
+            ...prev,
+            totalBalance: 0,
+            monthlySpend: 0,
+            totalIncome: 0,
+            netSavings: 0,
+          }));
+          appStorage.save(STORAGE_KEYS.METRICS, {
+            totalBalance: 0,
+            monthlySpend: 0,
+            totalIncome: 0,
+            netSavings: 0,
+            balanceChange: '+0.0%',
+            spendChange: '0.0%',
+            isPositive: true,
+            accountsCount: 0,
+          });
+        } else {
+          const spend = txs.filter((t: any) => t.amount < 0).reduce((sum: number, t: any) => sum + Math.abs(t.amount), 0);
+          const income = txs.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0);
+          const bal = Math.max(0, income - spend);
+          setMetrics((prev) => ({
+            ...prev,
+            totalBalance: bal,
+            monthlySpend: spend,
+            totalIncome: income,
+            netSavings: income - spend,
+          }));
+        }
+      }
+    });
+
+    const fetchMetricsAndLoans = async () => {
       setHasError(false);
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -73,33 +158,46 @@ export const KPICards: React.FC = () => {
         if (user?.uid) {
           headers['X-User-Id'] = user.uid;
         }
-        const res = await fetch(`${apiUrl}/api/dashboard/metrics`, { headers });
-        if (res.ok && !isCancelled) {
-          const data = await res.json();
+
+        const [metricsRes, loansRes] = await Promise.allSettled([
+          fetch(`${apiUrl}/api/dashboard/metrics`, { headers }),
+          fetch(`${apiUrl}/api/dashboard/loans`, { headers })
+        ]);
+
+        if (metricsRes.status === 'fulfilled' && metricsRes.value.ok && !isCancelled) {
+          const data = await metricsRes.value.json();
           if (data.currency && CURRENCIES[data.currency as CurrencyCode]) {
             setCurrency(data.currency as CurrencyCode);
           }
 
+          const cachedTxs = appStorage.getInitial<any[]>(STORAGE_KEYS.TRANSACTIONS, []);
+          const isZeroTxs = cachedTxs.length === 0;
+
           const metricsPayload: MetricsData = {
-            totalBalance: data.totalBalance || 0,
-            balanceChange: data.balanceChange || '+0.0%',
-            monthlySpend: data.monthlySpend || 0,
-            spendChange: data.spendChange || '0.0%',
+            totalBalance: isZeroTxs ? 0 : (data.totalBalance || 0),
+            balanceChange: isZeroTxs ? '+0.0%' : (data.balanceChange || '+0.0%'),
+            monthlySpend: isZeroTxs ? 0 : (data.monthlySpend || 0),
+            spendChange: isZeroTxs ? '0.0%' : (data.spendChange || '0.0%'),
             isPositive: !data.isUnderBudget,
-            totalIncome: data.totalIncome || 0,
-            netSavings: data.netSavings || 0,
-            savingsRate: data.savingsRate || '0%',
+            totalIncome: isZeroTxs ? 0 : (data.totalIncome || 0),
+            netSavings: isZeroTxs ? 0 : (data.netSavings || 0),
+            savingsRate: isZeroTxs ? '0%' : (data.savingsRate || '0%'),
             recurringCommitments: data.recurringCommitments || 0,
             aiSavingsIdentified: data.aiSavingsIdentified || 0,
-            accountsCount: data.activeAccountsCount || 0,
+            accountsCount: isZeroTxs ? 0 : (data.activeAccountsCount || 0),
             currency: data.currency,
             currencySymbol: data.currencySymbol
           };
-          // Persist instantly to localStorage + IndexedDB
           appStorage.save(STORAGE_KEYS.METRICS, metricsPayload);
           setMetrics(metricsPayload);
-        } else if (!res.ok && !isCancelled) {
-          setHasError(true);
+        }
+
+        if (loansRes.status === 'fulfilled' && loansRes.value.ok && !isCancelled) {
+          const lData = await loansRes.value.json();
+          if (Array.isArray(lData.loans)) {
+            setLoans(lData.loans);
+            appStorage.save(STORAGE_KEYS.LOANS, lData.loans);
+          }
         }
       } catch {
         if (!isCancelled) {
@@ -108,11 +206,13 @@ export const KPICards: React.FC = () => {
       }
     };
 
-    fetchMetrics();
+    fetchMetricsAndLoans();
 
     return () => {
       isCancelled = true;
-      unsubscribe();
+      unsubscribeMetrics();
+      unsubscribeLoans();
+      unsubscribeTxs();
     };
   }, [user]);
 
@@ -122,6 +222,15 @@ export const KPICards: React.FC = () => {
     return `${displaySymbol}${val.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
   };
 
+  // Loans to Pay: money borrowed that still needs to be repaid
+  const totalBorrowedRemaining = loans
+    .filter((l: any) => l.type === 'borrowed' && l.status !== 'settled')
+    .reduce((sum: number, l: any) => sum + Math.max(0, (l.amount || 0) - (l.repaidAmount || 0)), 0);
+
+  const activeBorrowedCount = loans.filter(
+    (l: any) => l.type === 'borrowed' && l.status !== 'settled' && ((l.amount || 0) - (l.repaidAmount || 0)) > 0
+  ).length;
+
   const kpis = [
     {
       title: 'Total Balance',
@@ -130,6 +239,8 @@ export const KPICards: React.FC = () => {
       isPositive: true,
       subtitle: '',
       icon: Wallet,
+      highlight: false,
+      onClick: undefined,
     },
     {
       title: 'Monthly Spend',
@@ -138,17 +249,20 @@ export const KPICards: React.FC = () => {
       isPositive: false,
       subtitle: 'Current monthly expenditure',
       icon: TrendingUp,
+      highlight: false,
+      onClick: undefined,
     },
     {
-      title: 'Net Savings',
-      value: formatCardValue(metrics.netSavings ?? (metrics.totalBalance > metrics.monthlySpend ? metrics.totalBalance - metrics.monthlySpend : 0)),
-      change: metrics.savingsRate && metrics.savingsRate !== '0%' ? `${metrics.savingsRate} Saved` : 'Surplus',
-      isPositive: (metrics.netSavings ?? 0) >= 0,
-      subtitle: (metrics.totalIncome && metrics.totalIncome > 0)
-        ? `Inflow: ${displaySymbol}${metrics.totalIncome.toLocaleString()} • Outflow: ${displaySymbol}${metrics.monthlySpend.toLocaleString()}`
-        : 'Liquid surplus after monthly expenses',
-      icon: PiggyBank,
+      title: 'Loans to Pay',
+      value: formatCardValue(totalBorrowedRemaining),
+      change: activeBorrowedCount > 0 ? `${activeBorrowedCount} Active` : 'All Settled',
+      isPositive: totalBorrowedRemaining === 0,
+      subtitle: activeBorrowedCount > 0
+        ? `${activeBorrowedCount} pending borrowed ${activeBorrowedCount === 1 ? 'loan' : 'loans'} • Click to view`
+        : 'No pending borrowed loans to repay',
+      icon: HandCoins,
       highlight: true,
+      onClick: () => navigate('/dashboard/loans'),
     },
   ];
 
@@ -175,9 +289,20 @@ export const KPICards: React.FC = () => {
           return (
             <div
               key={kpi.title}
+              onClick={kpi.onClick}
+              role={kpi.onClick ? 'button' : undefined}
+              tabIndex={kpi.onClick ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (kpi.onClick && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  kpi.onClick();
+                }
+              }}
               className={`p-4 sm:p-6 rounded-3xl bg-white border transition-all duration-300 shadow-xs hover:shadow-md hover:-translate-y-0.5 group ${
+                kpi.onClick ? 'cursor-pointer' : ''
+              } ${
                 kpi.highlight
-                  ? 'border-[#5391FE]/50 bg-gradient-to-br from-white to-blue-50/20'
+                  ? 'border-[#5391FE]/50 bg-gradient-to-br from-white to-blue-50/20 hover:border-[#5391FE]'
                   : 'border-slate-200'
               }`}
             >
@@ -186,11 +311,15 @@ export const KPICards: React.FC = () => {
                   <Icon className="w-6 h-6" />
                 </div>
                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                  kpi.highlight
-                    ? 'bg-blue-50 text-[#5391FE] border border-blue-200'
-                    : kpi.isPositive
-                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-600 border border-rose-200'
+                  kpi.title === 'Loans to Pay'
+                    ? totalBorrowedRemaining > 0
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                      : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                    : kpi.highlight
+                      ? 'bg-blue-50 text-[#5391FE] border border-blue-200'
+                      : kpi.isPositive
+                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-600 border border-rose-200'
                 }`}>
                   {kpi.isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                   {kpi.change}

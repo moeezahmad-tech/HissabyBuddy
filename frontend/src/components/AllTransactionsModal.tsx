@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Search, 
@@ -7,11 +8,20 @@ import {
   ArrowDownRight, 
   Inbox, 
   Receipt,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  HandCoins,
   CheckCircle2
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
 import { appStorage, STORAGE_KEYS } from '../services/appStorage';
+import MoveToLoanModal from './MoveToLoanModal';
+import EditTransactionModal from './EditTransactionModal';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Transaction {
   id: string;
@@ -37,16 +47,105 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { formatAmount, currentCurrency } = useCurrency();
+
+  const toast = useToast();
 
   // Instant 0ms render from dual-cache
   const [transactions, setTransactions] = useState<Transaction[]>(() =>
     appStorage.getInitial<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, [])
   );
+  const [loans, setLoans] = useState<any[]>(() =>
+    appStorage.getInitial<any[]>(STORAGE_KEYS.LOANS, [])
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedCategory, setSelectedCategory] = useState('All');
+
+  const [menuAnchor, setMenuAnchor] = useState<{
+    tx: Transaction;
+    top: number;
+    right: number;
+    openUpwards: boolean;
+  } | null>(null);
+  const [movingTx, setMovingTx] = useState<Transaction | null>(null);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
+  const [isDeletingTx, setIsDeletingTx] = useState(false);
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+
+  const handleOpenMenu = (e: React.MouseEvent<HTMLButtonElement>, tx: Transaction) => {
+    e.stopPropagation();
+    if (menuAnchor?.tx.id === tx.id) {
+      setMenuAnchor(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuHeight = 155;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpwards = spaceBelow < menuHeight && rect.top > menuHeight;
+
+    setMenuAnchor({
+      tx,
+      top: openUpwards ? rect.top - 6 : rect.bottom + 6,
+      right: Math.max(12, window.innerWidth - rect.right),
+      openUpwards,
+    });
+  };
+
+
+
+  useEffect(() => {
+    if (!menuAnchor) return;
+    const handleClose = () => setMenuAnchor(null);
+    window.addEventListener('click', handleClose);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
+  }, [menuAnchor]);
+
+  const fetchTransactions = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: Record<string, string> = {};
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+
+      const res = await fetch(`${apiUrl}/api/dashboard/transactions`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.transactions || [];
+        setTransactions(list);
+        appStorage.save(STORAGE_KEYS.TRANSACTIONS, list);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchLoans = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: Record<string, string> = {};
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+
+      const res = await fetch(`${apiUrl}/api/dashboard/loans`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.loans || [];
+        setLoans(list);
+        appStorage.save(STORAGE_KEYS.LOANS, list);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,27 +153,85 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
     // Refresh from cache first in case new items were added
     const cached = appStorage.getInitial<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, []);
     if (cached.length > 0) setTransactions(cached);
+    const cachedLoans = appStorage.getInitial<any[]>(STORAGE_KEYS.LOANS, []);
+    if (cachedLoans.length > 0) setLoans(cachedLoans);
 
-    const fetchAll = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const headers: Record<string, string> = {};
-        if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
-
-        const res = await fetch(`${apiUrl}/api/dashboard/transactions`, { headers });
-        if (res.ok) {
-          const data = await res.json();
-          const list = data.transactions || [];
-          setTransactions(list);
-          appStorage.save(STORAGE_KEYS.TRANSACTIONS, list);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    fetchAll();
+    fetchTransactions();
+    fetchLoans();
   }, [isOpen, user]);
+
+  const isMoved = (tx: Transaction) => {
+    const descLower = (tx.name || '').toLowerCase();
+    if (descLower.startsWith('loan:') || descLower.startsWith('repayment:')) return true;
+    const txAmt = Math.abs(tx.amount);
+    return loans.some((l) => {
+      if (l.notes && l.notes.includes(tx.id)) return true;
+      if (Math.abs(l.amount - txAmt) < 0.01) return true;
+      if (l.breakdown && l.breakdown.some((b: any) => Math.abs(b.amount - txAmt) < 0.01)) return true;
+      if (l.repayments && l.repayments.some((r: any) => r.notes?.includes(tx.id) || Math.abs(r.amount - txAmt) < 0.01)) return true;
+      return false;
+    });
+  };
+
+  const handleDeleteTransaction = (tx: Transaction) => {
+    setMenuAnchor(null);
+    setTxToDelete(tx);
+  };
+
+  const handleConfirmDeleteTransaction = async () => {
+    if (!txToDelete) return;
+    const tx = txToDelete;
+    setIsDeletingTx(true);
+
+    const updated = transactions.filter((t) => t.id !== tx.id);
+    setTransactions(updated);
+    appStorage.save(STORAGE_KEYS.TRANSACTIONS, updated);
+
+    toast.success(`Transaction "${tx.name}" deleted successfully.`, {
+      title: 'Transaction Deleted',
+    });
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+      if (user?.uid) headers['X-User-Id'] = user.uid;
+
+      await fetch(`${apiUrl}/api/dashboard/transactions/${encodeURIComponent(tx.id)}`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {
+      // Local cache updated
+    } finally {
+      setIsDeletingTx(false);
+      setTxToDelete(null);
+    }
+  };
+
+  const handleConfirmClearAll = async () => {
+    setIsClearingAll(true);
+    setTransactions([]);
+    appStorage.save(STORAGE_KEYS.TRANSACTIONS, []);
+    appStorage.save(STORAGE_KEYS.MOVED_TO_LOAN_IDS, []);
+    toast.success('All transaction history cleared and balance reset to Rs 0.00.', {
+      title: 'History Cleared',
+    });
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: Record<string, string> = {};
+      if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
+      if (user?.uid) headers['X-User-Id'] = user.uid;
+      await fetch(`${apiUrl}/api/dashboard/transactions`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {} finally {
+      setIsClearingAll(false);
+      setShowClearAllConfirm(false);
+    }
+  };
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -173,6 +330,18 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
               <span>Export CSV</span>
             </button>
 
+            {transactions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowClearAllConfirm(true)}
+                disabled={isClearingAll}
+                className="px-2.5 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                <span>Clear All</span>
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
@@ -247,9 +416,9 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
               </button>
             ))}
           </div>
-        </div>
+      </div>
 
-        {/* Ledger Summary Stats */}
+      {/* Ledger Summary Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
             <span className="text-[10px] uppercase font-bold text-emerald-700 block">Total Inflow / Salary</span>
@@ -284,8 +453,8 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
                   <th className="py-2.5 px-4">Transaction Details</th>
                   <th className="py-2.5 px-4">Category</th>
                   <th className="py-2.5 px-4">Date</th>
-                  <th className="py-2.5 px-4">Status</th>
                   <th className="py-2.5 px-4 text-right">Amount</th>
+                  <th className="py-2.5 px-2 text-right w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -302,7 +471,15 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
                             {isDebit ? <ArrowDownRight className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
                           </div>
                           <div>
-                            <p className="font-bold text-slate-900 leading-tight">{tx.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-slate-900 leading-tight">{tx.name}</p>
+                              {isMoved(tx) && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-blue-50 text-blue-600 border border-blue-100">
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  In Loans
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
                               <span className="font-mono">{tx.id}</span>
                               {tx.payee && <span>• {tx.payee}</span>}
@@ -317,16 +494,26 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-slate-500 text-[11px] whitespace-nowrap">{tx.date}</td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                          <CheckCircle2 className="w-3 h-3" />
-                          {tx.status || 'Verified'}
-                        </span>
-                      </td>
                       <td className={`py-3 px-4 text-right font-black whitespace-nowrap ${
                         isDebit ? 'text-rose-600' : 'text-emerald-600'
                       }`}>
                         {isDebit ? '-' : '+'}{sym}{Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+
+                      {/* 3-Dots Action Button (Zero excess column width, no layout stretching) */}
+                      <td className="py-3 px-2 text-right w-8">
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenMenu(e, tx)}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                            menuAnchor?.tx.id === tx.id
+                              ? 'bg-slate-100 border-slate-300 text-slate-800 shadow-xs'
+                              : 'border-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-100 hover:border-slate-200'
+                          }`}
+                          title="Options"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -348,6 +535,148 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
         </div>
 
       </div>
+
+      {/* Floating 3-Dots Action Menu (Mounted via Portal into document.body: overflows freely, 0 layout footprint, never triggers table scrollbars) */}
+      {menuAnchor && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: menuAnchor.openUpwards ? undefined : `${menuAnchor.top}px`,
+            bottom: menuAnchor.openUpwards ? `${window.innerHeight - menuAnchor.top}px` : undefined,
+            right: `${menuAnchor.right}px`,
+            zIndex: 99999,
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-48 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 text-xs font-semibold animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5"
+        >
+          {isMoved(menuAnchor.tx) ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuAnchor(null);
+                onClose();
+                navigate('/dashboard/loans');
+              }}
+              className="w-full px-3.5 py-2 text-left text-blue-600 hover:bg-blue-50 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>View in Loans</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const targetTx = menuAnchor.tx;
+                setMenuAnchor(null);
+                setMovingTx(targetTx);
+              }}
+              className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <HandCoins className="w-4 h-4 text-[#5391FE] shrink-0" />
+              <span>Move to Loans</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              const targetTx = menuAnchor.tx;
+              setMenuAnchor(null);
+              setEditingTx(targetTx);
+            }}
+            className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Pencil className="w-4 h-4 text-slate-500 shrink-0" />
+            <span>Edit Details</span>
+          </button>
+
+          <div className="my-1 border-t border-slate-100" />
+
+          <button
+            type="button"
+            onClick={() => {
+              const targetTx = menuAnchor.tx;
+              setMenuAnchor(null);
+              handleDeleteTransaction(targetTx);
+            }}
+            className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>Delete Entry</span>
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Move to Loan Modal */}
+      <MoveToLoanModal
+        isOpen={Boolean(movingTx)}
+        transaction={movingTx as any}
+        onClose={() => setMovingTx(null)}
+        onSuccess={(msg) => {
+          toast.success(msg || 'Transaction moved into Loans & Debts successfully!', {
+            title: 'Moved to Loans',
+            action: {
+              label: 'Go to Loans',
+              onClick: () => {
+                onClose();
+                navigate('/dashboard/loans');
+              },
+            },
+          });
+          fetchTransactions();
+          fetchLoans();
+        }}
+      />
+
+      {/* Edit Transaction Modal */}
+      <EditTransactionModal
+        isOpen={Boolean(editingTx)}
+        transaction={editingTx as any}
+        onClose={() => setEditingTx(null)}
+        onSuccess={(updated) => {
+          toast.success(`Updated "${updated.name}" successfully.`, { title: 'Transaction Updated' });
+          fetchTransactions();
+        }}
+      />
+
+      {/* Custom Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(txToDelete)}
+        onClose={() => {
+          if (!isDeletingTx) setTxToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteTransaction}
+        title="Delete Transaction"
+        message={
+          txToDelete ? (
+            <span>
+              Are you sure you want to delete <strong className="text-slate-900 dark:text-white font-semibold">"{txToDelete.name}"</strong> ({formatAmount(txToDelete.amount)})? This action cannot be undone.
+            </span>
+          ) : null
+        }
+        confirmText="Delete Transaction"
+        isLoading={isDeletingTx}
+        variant="danger"
+      />
+
+      {/* Clear All Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showClearAllConfirm}
+        onClose={() => {
+          if (!isClearingAll) setShowClearAllConfirm(false);
+        }}
+        onConfirm={handleConfirmClearAll}
+        title="Clear All Transaction History"
+        message={
+          <span>
+            Are you sure you want to delete all <strong className="text-slate-900 dark:text-white font-semibold">{transactions.length} transactions</strong>? This will wipe your ledger history and reset your Total Balance to Rs 0.00.
+          </span>
+        }
+        confirmText="Clear All History"
+        isLoading={isClearingAll}
+        variant="danger"
+      />
     </div>
   );
 };
